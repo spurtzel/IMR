@@ -23,8 +23,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# Keep the repo root importable so callers that reference ,,benchmark.mode_b_estimator.*''
-# resolve regardless of how this package is first imported.
+# Keep the repo root importable regardless of how this package is first imported.
 _REPO_ROOT = str(Path(__file__).resolve().parents[2])
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
@@ -132,7 +131,7 @@ def gather_stats(columns, client, table: str, *, enriched: bool = False,
 
 
 # --------------------------------------------------------------------------- #
-# Self-test (no Trino): python3 -m benchmark.mode_b_estimator
+# Self-test (no Trino access)
 # --------------------------------------------------------------------------- #
 def _selftest() -> None:
     from math import isnan

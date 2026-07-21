@@ -405,7 +405,7 @@ def _add_benchmark_args(parser: argparse.ArgumentParser) -> None:
         "--composition-variant-idx",
         type=int,
         default=None,
-        help="Use a concrete composition variant instead of the legacy composition_plan_idx path.",
+        help="Select the concrete composition variant to execute.",
     )
     parser.add_argument(
         "--composition-variant-mode",
@@ -451,7 +451,7 @@ def _add_benchmark_args(parser: argparse.ArgumentParser) -> None:
         "--query-batches",
         default=None,
         help="1-based comma-separated batches to run compose/post-filter/correctness; "
-        "omit or use 'all' for legacy every-batch behavior; use 'none' for update-only.",
+        "omit or use 'all' for every-batch behavior; use 'none' for update-only.",
     )
     parser.add_argument(
         "--selectivity-mode",
@@ -497,11 +497,11 @@ def _validate_cost_model_validation_args(parser: argparse.ArgumentParser, args: 
         parser.error("--cost-model-validation is incompatible with --MR-postprocessing")
 
     strategy_ids = _parse_strategy_ids_csv(getattr(args, "strategies", ""))
-    legacy = [sid for sid in strategy_ids if sid.upper().startswith("S")]
-    if legacy:
+    unsupported = [sid for sid in strategy_ids if sid.upper().startswith("S")]
+    if unsupported:
         parser.error(
             "--cost-model-validation only supports EIMER N* strategies; "
-            f"legacy strategies not allowed: {', '.join(legacy)}"
+            f"unsupported strategy ids: {', '.join(unsupported)}"
         )
 
     if args.command == "run":

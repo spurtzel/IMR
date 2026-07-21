@@ -1,9 +1,9 @@
-"""Parametric MATCH_RECOGNIZE query-spec generator for the factor-grid cost-model campaign.
+"""Parametric MATCH_RECOGNIZE query-spec generator.
 
 Emits overnight_suite-format specs for any pattern length n, topology shape, and band
-tightness, varying {n, topology, band tightness, predicate type, ...} from one place.
+tightness.
 
-CLI: ,,python3 workload/query/campaign_spec_gen.py --emit-n5-probe''  -> q5_{chain,star,cycle} for the feasibility probe.
+CLI: ,,python3 workload/query/campaign_spec_gen.py --emit-n5-probe''  -> q5_{chain,star,cycle}.
 """
 import json, argparse
 from pathlib import Path

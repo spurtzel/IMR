@@ -95,13 +95,13 @@ def make_workload(
     selectivities: Selectivities,
     rho: float = 1000.0,
 ) -> Workload:
-    """A workload IS a sequence of batch sizes s=[s1,...,sB]; table size N is derived, NOT an axis:
-      #batches = len(s); N = initial_base_size + sum(s); window after batch t = initial_base_size + sum(s[:t]) (== Workload.n_at(t)).
-    Precedence (choose the batch STRUCTURE; N results):
-      1. batch_sizes=[...]           -> arbitrary NON-UNIFORM sequence (N = sum).
-      2. (batch_size=, batches=)     -> UNIFORM sequence [batch_size]*batches (N = batch_size*batches).
-      3. (total_events=N, batches=B) -> uniform split, remainder over the first cells (sum == N exactly).
-    Forms 1/2 hold per-batch size constant while N varies; form 3 conflates N and batch_size (= N/B)."""
+    """a workload is its sequence of batch sizes s=[s1,...,sB]; table size N is derived:
+    N = initial_base_size + sum(s); window after batch t = initial_base_size + sum(s[:t]) (== Workload.n_at(t)).
+    precedence:
+      1. batch_sizes=[...]           -> arbitrary non-uniform sequence.
+      2. (batch_size=, batches=)     -> uniform sequence [batch_size]*batches.
+      3. (total_events=N, batches=B) -> uniform split, remainder over the first batches (sum == N exactly).
+    forms 1/2 fix the per-batch size; form 3 couples batch size to N (= N/B)."""
     if batch_sizes is not None:
         seq = tuple(int(x) for x in batch_sizes)
         if not seq:

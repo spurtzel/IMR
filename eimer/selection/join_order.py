@@ -14,8 +14,8 @@ from eimer.models import CompositionPlan, View, make_view, view_sort_key
 from eimer.plans.composition import CompositionJoinGraph
 from eimer.workload import ConstantSelectivity, WindowSelectivity, Workload
 
-# equi-join rows cost ~ij_rate/fp_rate of fp rows; selection-inert (ij=1.0 changes no replayed picks),
-# affecting only absolute compose scores. the clique-grow selector ranks with ij_over_fp=1.0.
+# equi-join rows cost ~ij_rate/fp_rate of fp rows; selection-inert, affecting only absolute
+# compose scores. the clique-grow selector ranks with ij_over_fp=1.0.
 _IJ_OVER_FP = 1.06
 
 

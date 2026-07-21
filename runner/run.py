@@ -7,8 +7,7 @@
 
 Flow: VALIDATE (reject illegal combos, naming the violated constraint) -> MATERIALIZE
 (spec + dataset) -> ORCHESTRATE (load -> sigma -> select -> execute the rank-1 pick) ->
-COLLECT (experiment_manifest.json + candidate_rows.csv). Config is scalar; a list value
-is a grid axis (run_grid.py).
+COLLECT (experiment_manifest.json + candidate_rows.csv). Config values are scalar.
 
 Backends ,,trino'' and ,,memory'' (Trino's in-RAM catalog) both run the full spine. The
 backend is REQUIRED: a missing one fails loud in validation, never a silent fallback.

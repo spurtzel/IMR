@@ -11,7 +11,7 @@ numpy==2.2.1
 pandas==2.2.3
 pyarrow==24.0.0
 
-# The CONFIG RUNNER (eimer/) reads experiment.yaml / environment.yaml (safe_load only).
+# The CONFIG RUNNER (runner/) reads experiment.yaml / environment.yaml (safe_load only).
 PyYAML==6.0.3
 
 # The sensitivity-analysis figure (demo/plot_sensitivity.py).

@@ -1,7 +1,6 @@
 """experiment.yaml / environment.yaml schema: defines config shape only.
 
-Scalar values only; list values are grid axes expanded by runner/grid.py.
-Construction is strict: unknown keys are rejected by name. Value legality and
+Scalar values only. Construction is strict: unknown keys are rejected by name. Value legality and
 cross-field rules live in validate.py. JSON loads via stdlib; YAML needs PyYAML.
 """
 

@@ -1,8 +1,8 @@
 """Config runner: the config -> run spine. experiment.yaml + environment.yaml
 in, one validated, materialized, executed, recorded experiment out.
 
-  schema.py     : experiment/environment schema (a list value is a grid axis,
-                   unknown keys rejected, backend required with no default).
+  schema.py     : experiment/environment schema (unknown keys rejected,
+                   backend required with no default).
   validate.py   : config-level constraints (selectivity_mode in {b_unified, c},
                    per-type <=100% / sum <=100%, feasibility floor, band-tightness
                    range, Kleene shape).

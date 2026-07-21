@@ -410,7 +410,7 @@ def validate_query_spec(spec: QuerySpec, *, allow_kleene: bool = False) -> None:
         if touched:
             raise ValueError(
                 f"Dependent predicate {predicate.predicate_id!r} references Kleene variable(s) {touched!r}; "
-                f"dependent-condition Kleene is out of scope (EIMER.md 2.5)"
+                f"dependent-condition Kleene is out of scope"
             )
 
     if not spec.result_key_columns:

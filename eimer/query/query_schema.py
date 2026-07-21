@@ -1,8 +1,7 @@
 """schema helpers for restricted-model QuerySpec sql generation.
 
 the QuerySpec event schema is the source of truth for columns carried through eimer
-view tables. these helpers live in core so benchmark ddl generation stays generic
-without importing query registries or presets.
+view tables.
 """
 
 from __future__ import annotations

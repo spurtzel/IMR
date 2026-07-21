@@ -39,7 +39,7 @@ DENSITY_HEURISTIC_THRESHOLD = 1e-3                      # StatisticRange.java:35
 # Generated events schema (workload/data/datagen/config.py EVENT_COLUMNS).
 EVENT_COLUMNS = ("id", "time", "ts", "primary_type", "etype", "lon", "lat")
 
-# Canonical CSV header for one estimate-vs-oracle measurement (run_eval writes these).
+# Canonical CSV header for one estimate-vs-oracle measurement.
 RESULT_COLUMNS = (
     "config_id", "size", "regime", "ndv_variant", "band_variant", "temporal_variant",
     "operator", "family", "col", "other", "predicate_sql",

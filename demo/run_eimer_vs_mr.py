@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import common  # noqa: E402  (also wires repo-root + benchmark onto sys.path)
+import common  # noqa: E402  (also wires repo-root + execution onto sys.path)
 import trino_exec  # noqa: E402
 
 from eimer.selection.plan_selection_clique_grow import select_clique_grow_plan  # noqa: E402

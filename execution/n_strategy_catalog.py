@@ -152,13 +152,13 @@ def build_curated_strategy_index(
     max_strategies: int = 40,
     max_views_per_strategy: int | None = None,
 ):
+    """Like ``build_eimer_strategy_index`` but attaches composition plans to a bounded, curated
+    subset of strategies (``_curate_strategy_subset``), the tractable path at n=4. Returns
+    ``(dep_graph, {N<i>: strategy_with_plans})`` like ``build_eimer_strategy_index``."""
     # max_views bounds the per-strategy composition-variant blow-up (2^views covers). Default 4
     # keeps the fully-deferred 4-singleton endpoint; override via EIMER_CURATED_MAX_VIEWS.
     if max_views_per_strategy is None:
         max_views_per_strategy = int(os.environ.get("EIMER_CURATED_MAX_VIEWS", "4"))
-    """Like ``build_eimer_strategy_index`` but attaches composition plans to a bounded, curated
-    subset of strategies (``_curate_strategy_subset``), the tractable path at n=4. Returns
-    ``(dep_graph, {N<i>: strategy_with_plans})`` like ``build_eimer_strategy_index``."""
     query_spec = query_spec or canonical_query_spec(config)
     dep_graph = query_spec_to_dependency_graph(query_spec)
     if query_spec.name == "canonical_r_b_m":
@@ -293,7 +293,7 @@ def _compile_n_strategy(
             or generate_sql_statements_for_cover is None
         ):
             raise RuntimeError(
-                "Composition-variant correctness requires the optimizer-refactor framework files "
+                "Composition-variant correctness requires the eimer package importable "
                 "on the server. Copy eimer/*.py before using --composition-variant-idx."
             )
         variants = get_composition_variants(
