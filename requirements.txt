@@ -1,0 +1,18 @@
+# Runtime dependencies for EIMER. Python 3.10 (this repo: 3.10.9).
+#
+# The core compiler + Trino client (eimer/, execution/cli.py, trino_client.py) are
+# pure standard library (HTTP over urllib), nothing to pin there.
+#
+# The SYNTHETIC DATASET GENERATOR (workload/data/datagen)
+# DOES use third-party libraries, and datagen is bit-identical (manifest fingerprints / calibrated σ)
+# only under matching versions, so these are PINNED. Regenerating under a different numpy/pandas can
+# silently shift the achieved σ and break fingerprint joins.
+numpy==2.2.1
+pandas==2.2.3
+pyarrow==24.0.0
+
+# The CONFIG RUNNER (eimer/) reads experiment.yaml / environment.yaml (safe_load only).
+PyYAML==6.0.3
+
+# The sensitivity-analysis figure (demo/plot_sensitivity.py).
+matplotlib==3.10.0

@@ -1,0 +1,26 @@
+# Demo experiment: small end-to-end pipeline cell (<= 5k rows) with the per-batch
+# native-MATCH_RECOGNIZE full-tuple correctness capture ON.
+query:
+  pattern_length: 3
+  topology: chain
+  predicate_class: spatial
+
+data:
+  stream: [2000, 500, 500]      # initial history + 2 update batches (N = 3000)
+  seed: 4242
+  rho: 1000
+  cluster_count: 4
+  independent_selectivity:
+    ROBBERY: 0.10
+    BATTERY: 0.10
+    MOTOR VEHICLE THEFT: 0.15
+
+execution:
+  selectivity_mode: b_unified   # the deployable estimator, measured on the loaded table
+  join_order: bushy
+
+output:
+  with_qep: false
+  with_correctness: true        # per-batch full-tuple multiset diff vs native MATCH_RECOGNIZE
+
+band_tightness: 0.10

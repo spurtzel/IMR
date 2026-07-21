@@ -1,0 +1,13 @@
+# Demo environment: Trino `memory` catalog (no external storage needed).
+# `server` is deliberately omitted: the TRINO_SERVER environment variable decides
+# (localhost:8080 for a local Trino; the docker demo sets trino:8080). There is no
+# silent default, an unset TRINO_SERVER fails loud.
+backend: memory
+
+connection:
+  schema: default
+  user: trino
+
+parallelism:
+  mode: serial
+  containers: 1
