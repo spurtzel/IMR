@@ -1,0 +1,230 @@
+{
+ "name": "taxi_Q1",
+ "variables": [
+  {
+   "name": "A",
+   "output_prefix": "a",
+   "independent_predicate_id": "A_ind"
+  },
+  {
+   "name": "B",
+   "output_prefix": "b",
+   "independent_predicate_id": "B_ind"
+  },
+  {
+   "name": "C",
+   "output_prefix": "c",
+   "independent_predicate_id": "C_ind"
+  }
+ ],
+ "pattern": {
+  "variables": [
+   "A",
+   "B",
+   "C"
+  ],
+  "wildcard": "Z",
+  "wildcard_quantifier": "*"
+ },
+ "independent_predicates": [
+  {
+   "predicate_id": "A_ind",
+   "kind": "independent",
+   "variables": [
+    "A"
+   ],
+   "sql_template": "A.total_amount BETWEEN 12 AND 30",
+   "referenced_columns": [],
+   "selectivity_key": "A"
+  },
+  {
+   "predicate_id": "B_ind",
+   "kind": "independent",
+   "variables": [
+    "B"
+   ],
+   "sql_template": "B.total_amount > 0",
+   "referenced_columns": [],
+   "selectivity_key": "B"
+  },
+  {
+   "predicate_id": "C_ind",
+   "kind": "independent",
+   "variables": [
+    "C"
+   ],
+   "sql_template": "C.total_amount > 0",
+   "referenced_columns": [],
+   "selectivity_key": "C"
+  }
+ ],
+ "dependent_predicates": [
+  {
+   "predicate_id": "A_B_dep",
+   "kind": "dependent",
+   "variables": [
+    "A",
+    "B"
+   ],
+   "sql_template": "B.pu_location_id = A.pu_location_id AND B.do_location_id = A.do_location_id AND B.total_amount > A.total_amount + 15 AND B.real_time BETWEEN A.real_time AND A.real_time + INTERVAL '15' MINUTE",
+   "referenced_columns": [],
+   "selectivity_key": "A|B"
+  },
+  {
+   "predicate_id": "B_C_dep",
+   "kind": "dependent",
+   "variables": [
+    "B",
+    "C"
+   ],
+   "sql_template": "C.pu_location_id = B.pu_location_id AND C.do_location_id = B.do_location_id AND C.total_amount > B.total_amount + 15 AND C.real_time BETWEEN B.real_time AND B.real_time + INTERVAL '60' MINUTE",
+   "referenced_columns": [],
+   "selectivity_key": "B|C"
+  }
+ ],
+ "measures": [
+  {
+   "expression": "A.id",
+   "alias": "a_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "A.time",
+   "alias": "a_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "expression": "B.id",
+   "alias": "b_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "B.time",
+   "alias": "b_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "expression": "C.id",
+   "alias": "c_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "C.time",
+   "alias": "c_time",
+   "sql_type": "TIMESTAMP(6)"
+  }
+ ],
+ "result_key_columns": [
+  "a_id",
+  "a_time",
+  "b_id",
+  "b_time",
+  "c_id",
+  "c_time"
+ ],
+ "event_schema": [
+  {
+   "name": "id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "name": "time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "name": "ts",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "name": "real_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "name": "dropoff_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "name": "vendor_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "name": "passenger_count",
+   "sql_type": "BIGINT"
+  },
+  {
+   "name": "trip_distance",
+   "sql_type": "DOUBLE"
+  },
+  {
+   "name": "rate_code_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "name": "store_and_fwd_flag",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "pu_location_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "name": "do_location_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "name": "payment_type",
+   "sql_type": "BIGINT"
+  },
+  {
+   "name": "fare_amount",
+   "sql_type": "DOUBLE"
+  },
+  {
+   "name": "extra",
+   "sql_type": "DOUBLE"
+  },
+  {
+   "name": "mta_tax",
+   "sql_type": "DOUBLE"
+  },
+  {
+   "name": "tip_amount",
+   "sql_type": "DOUBLE"
+  },
+  {
+   "name": "tolls_amount",
+   "sql_type": "DOUBLE"
+  },
+  {
+   "name": "improvement_surcharge",
+   "sql_type": "DOUBLE"
+  },
+  {
+   "name": "total_amount",
+   "sql_type": "DOUBLE"
+  },
+  {
+   "name": "congestion_surcharge",
+   "sql_type": "DOUBLE"
+  },
+  {
+   "name": "airport_fee",
+   "sql_type": "DOUBLE"
+  },
+  {
+   "name": "cbd_congestion_fee",
+   "sql_type": "DOUBLE"
+  }
+ ],
+ "id_column": "id",
+ "time_column": "time",
+ "ts_column": "ts",
+ "order_by": [
+  "time"
+ ],
+ "row_output": "ONE ROW PER MATCH",
+ "after_match": "AFTER MATCH SKIP TO NEXT ROW",
+ "partition_by": [],
+ "window": null,
+ "kleene_annotations": []
+}

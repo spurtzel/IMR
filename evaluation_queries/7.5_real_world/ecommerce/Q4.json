@@ -1,0 +1,185 @@
+{
+ "name": "ecommerce_Q4",
+ "variables": [
+  {
+   "name": "A",
+   "output_prefix": "a",
+   "independent_predicate_id": "A_ind"
+  },
+  {
+   "name": "B",
+   "output_prefix": "b",
+   "independent_predicate_id": "B_ind",
+   "quantifier": "PLUS"
+  },
+  {
+   "name": "C",
+   "output_prefix": "c",
+   "independent_predicate_id": "C_ind"
+  }
+ ],
+ "pattern": {
+  "variables": [
+   "A",
+   "B",
+   "C"
+  ],
+  "wildcard": "Z",
+  "wildcard_quantifier": "*",
+  "gap_quantifiers": [
+   "*?",
+   "*"
+  ]
+ },
+ "independent_predicates": [
+  {
+   "predicate_id": "A_ind",
+   "kind": "independent",
+   "variables": [
+    "A"
+   ],
+   "sql_template": "A.event_type = 'cart'",
+   "referenced_columns": [],
+   "selectivity_key": "A"
+  },
+  {
+   "predicate_id": "B_ind",
+   "kind": "independent",
+   "variables": [
+    "B"
+   ],
+   "sql_template": "B.event_type = 'view'",
+   "referenced_columns": [],
+   "selectivity_key": "B"
+  },
+  {
+   "predicate_id": "C_ind",
+   "kind": "independent",
+   "variables": [
+    "C"
+   ],
+   "sql_template": "C.event_type = 'purchase'",
+   "referenced_columns": [],
+   "selectivity_key": "C"
+  }
+ ],
+ "dependent_predicates": [
+  {
+   "predicate_id": "A_C_dep",
+   "kind": "dependent",
+   "variables": [
+    "A",
+    "C"
+   ],
+   "sql_template": "C.user_id = A.user_id AND C.product_id = A.product_id AND C.real_time BETWEEN A.real_time AND A.real_time + INTERVAL '30' MINUTE",
+   "referenced_columns": [],
+   "selectivity_key": "A|C"
+  }
+ ],
+ "measures": [
+  {
+   "expression": "A.id",
+   "alias": "a_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "A.time",
+   "alias": "a_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "expression": "COUNT(B.id)",
+   "alias": "b_count",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "FIRST(B.id)",
+   "alias": "b_first_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "LAST(B.id)",
+   "alias": "b_last_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "C.id",
+   "alias": "c_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "C.time",
+   "alias": "c_time",
+   "sql_type": "TIMESTAMP(6)"
+  }
+ ],
+ "result_key_columns": [
+  "a_id",
+  "a_time",
+  "b_first_id",
+  "b_last_id",
+  "c_id",
+  "c_time"
+ ],
+ "event_schema": [
+  {
+   "name": "id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "name": "time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "name": "ts",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "name": "real_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "name": "event_type",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "product_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "name": "category_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "name": "category_code",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "brand",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "price",
+   "sql_type": "DOUBLE"
+  },
+  {
+   "name": "user_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "name": "user_session",
+   "sql_type": "VARCHAR"
+  }
+ ],
+ "id_column": "id",
+ "time_column": "time",
+ "ts_column": "ts",
+ "order_by": [
+  "time"
+ ],
+ "row_output": "ONE ROW PER MATCH",
+ "after_match": "AFTER MATCH SKIP TO NEXT ROW",
+ "partition_by": [],
+ "window": null,
+ "kleene_annotations": []
+}

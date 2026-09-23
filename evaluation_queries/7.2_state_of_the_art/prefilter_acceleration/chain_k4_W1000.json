@@ -1,0 +1,240 @@
+{
+ "event_schema": [
+  {
+   "name": "id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "name": "time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "name": "ts",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "name": "primary_type",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "etype",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "lon",
+   "sql_type": "DOUBLE"
+  },
+  {
+   "name": "lat",
+   "sql_type": "DOUBLE"
+  }
+ ],
+ "id_column": "id",
+ "time_column": "time",
+ "ts_column": "ts",
+ "order_by": [
+  "time"
+ ],
+ "row_output": "ONE ROW PER MATCH",
+ "after_match": "AFTER MATCH SKIP TO NEXT ROW",
+ "partition_by": [],
+ "window": null,
+ "kleene_annotations": [],
+ "name": "chain_k4_W1000",
+ "suite_metadata": {
+  "pattern_length": 4,
+  "shape": "chain",
+  "purpose": "windowed chain k=4, W=1000ms first-last span (PRISM-vs-prefilter)"
+ },
+ "variables": [
+  {
+   "name": "V0",
+   "output_prefix": "v0",
+   "independent_predicate_id": "V0_type"
+  },
+  {
+   "name": "V1",
+   "output_prefix": "v1",
+   "independent_predicate_id": "V1_type"
+  },
+  {
+   "name": "V2",
+   "output_prefix": "v2",
+   "independent_predicate_id": "V2_type"
+  },
+  {
+   "name": "V3",
+   "output_prefix": "v3",
+   "independent_predicate_id": "V3_type"
+  }
+ ],
+ "pattern": {
+  "variables": [
+   "V0",
+   "V1",
+   "V2",
+   "V3"
+  ],
+  "wildcard": "Z",
+  "wildcard_quantifier": "*"
+ },
+ "independent_predicates": [
+  {
+   "predicate_id": "V0_type",
+   "kind": "independent",
+   "variables": [
+    "V0"
+   ],
+   "sql_template": "V0.primary_type = 'T0'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "V0"
+  },
+  {
+   "predicate_id": "V1_type",
+   "kind": "independent",
+   "variables": [
+    "V1"
+   ],
+   "sql_template": "V1.primary_type = 'T1'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "V1"
+  },
+  {
+   "predicate_id": "V2_type",
+   "kind": "independent",
+   "variables": [
+    "V2"
+   ],
+   "sql_template": "V2.primary_type = 'T2'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "V2"
+  },
+  {
+   "predicate_id": "V3_type",
+   "kind": "independent",
+   "variables": [
+    "V3"
+   ],
+   "sql_template": "V3.primary_type = 'T3'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "V3"
+  }
+ ],
+ "dependent_predicates": [
+  {
+   "predicate_id": "V0_V1_spatial",
+   "kind": "dependent",
+   "variables": [
+    "V0",
+    "V1"
+   ],
+   "sql_template": "V1.lon BETWEEN V0.lon - 0.05 AND V0.lon + 0.05 AND V1.lat BETWEEN V0.lat - 0.02 AND V0.lat + 0.02",
+   "referenced_columns": [
+    "lon",
+    "lat"
+   ],
+   "selectivity_key": "V0|V1"
+  },
+  {
+   "predicate_id": "V1_V2_spatial",
+   "kind": "dependent",
+   "variables": [
+    "V1",
+    "V2"
+   ],
+   "sql_template": "V2.lon BETWEEN V1.lon - 0.05 AND V1.lon + 0.05 AND V2.lat BETWEEN V1.lat - 0.02 AND V1.lat + 0.02",
+   "referenced_columns": [
+    "lon",
+    "lat"
+   ],
+   "selectivity_key": "V1|V2"
+  },
+  {
+   "predicate_id": "V2_V3_spatial",
+   "kind": "dependent",
+   "variables": [
+    "V2",
+    "V3"
+   ],
+   "sql_template": "V3.lon BETWEEN V2.lon - 0.05 AND V2.lon + 0.05 AND V3.lat BETWEEN V2.lat - 0.02 AND V2.lat + 0.02",
+   "referenced_columns": [
+    "lon",
+    "lat"
+   ],
+   "selectivity_key": "V2|V3"
+  },
+  {
+   "predicate_id": "V0_V3_window",
+   "kind": "dependent",
+   "variables": [
+    "V0",
+    "V3"
+   ],
+   "sql_template": "V3.ts BETWEEN V0.ts AND V0.ts+INTERVAL '1.0' SECOND",
+   "referenced_columns": [
+    "ts"
+   ],
+   "selectivity_key": "V0|V3"
+  }
+ ],
+ "measures": [
+  {
+   "expression": "V0.id",
+   "alias": "v0_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "V0.time",
+   "alias": "v0_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "expression": "V1.id",
+   "alias": "v1_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "V1.time",
+   "alias": "v1_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "expression": "V2.id",
+   "alias": "v2_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "V2.time",
+   "alias": "v2_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "expression": "V3.id",
+   "alias": "v3_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "V3.time",
+   "alias": "v3_time",
+   "sql_type": "TIMESTAMP(6)"
+  }
+ ],
+ "result_key_columns": [
+  "v0_id",
+  "v0_time",
+  "v1_id",
+  "v1_time",
+  "v2_id",
+  "v2_time",
+  "v3_id",
+  "v3_time"
+ ]
+}

@@ -1,0 +1,218 @@
+{
+ "name": "chicago_Q1",
+ "variables": [
+  {
+   "name": "A",
+   "output_prefix": "a",
+   "independent_predicate_id": "A_ind"
+  },
+  {
+   "name": "B",
+   "output_prefix": "b",
+   "independent_predicate_id": "B_ind"
+  },
+  {
+   "name": "C",
+   "output_prefix": "c",
+   "independent_predicate_id": "C_ind"
+  }
+ ],
+ "pattern": {
+  "variables": [
+   "A",
+   "B",
+   "C"
+  ],
+  "wildcard": "Z",
+  "wildcard_quantifier": "*"
+ },
+ "independent_predicates": [
+  {
+   "predicate_id": "A_ind",
+   "kind": "independent",
+   "variables": [
+    "A"
+   ],
+   "sql_template": "A.primary_type = 'THEFT'",
+   "referenced_columns": [],
+   "selectivity_key": "A"
+  },
+  {
+   "predicate_id": "B_ind",
+   "kind": "independent",
+   "variables": [
+    "B"
+   ],
+   "sql_template": "B.primary_type = 'BURGLARY'",
+   "referenced_columns": [],
+   "selectivity_key": "B"
+  },
+  {
+   "predicate_id": "C_ind",
+   "kind": "independent",
+   "variables": [
+    "C"
+   ],
+   "sql_template": "C.primary_type = 'ROBBERY'",
+   "referenced_columns": [],
+   "selectivity_key": "C"
+  }
+ ],
+ "dependent_predicates": [
+  {
+   "predicate_id": "A_B_dep",
+   "kind": "dependent",
+   "variables": [
+    "A",
+    "B"
+   ],
+   "sql_template": "B.x_coord BETWEEN A.x_coord - 2640 AND A.x_coord + 2640 AND B.y_coord BETWEEN A.y_coord - 2640 AND A.y_coord + 2640 AND B.real_time BETWEEN A.real_time AND A.real_time + INTERVAL '7' DAY",
+   "referenced_columns": [],
+   "selectivity_key": "A|B"
+  },
+  {
+   "predicate_id": "B_C_dep",
+   "kind": "dependent",
+   "variables": [
+    "B",
+    "C"
+   ],
+   "sql_template": "C.x_coord BETWEEN B.x_coord - 2640 AND B.x_coord + 2640 AND C.y_coord BETWEEN B.y_coord - 2640 AND B.y_coord + 2640 AND C.real_time BETWEEN B.real_time AND B.real_time + INTERVAL '7' DAY",
+   "referenced_columns": [],
+   "selectivity_key": "B|C"
+  }
+ ],
+ "measures": [
+  {
+   "expression": "A.id",
+   "alias": "a_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "A.time",
+   "alias": "a_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "expression": "B.id",
+   "alias": "b_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "B.time",
+   "alias": "b_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "expression": "C.id",
+   "alias": "c_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "C.time",
+   "alias": "c_time",
+   "sql_type": "TIMESTAMP(6)"
+  }
+ ],
+ "result_key_columns": [
+  "a_id",
+  "a_time",
+  "b_id",
+  "b_time",
+  "c_id",
+  "c_time"
+ ],
+ "event_schema": [
+  {
+   "name": "id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "name": "time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "name": "ts",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "name": "real_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "name": "primary_type",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "description",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "iucr",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "location_description",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "beat",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "district",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "ward",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "community_area",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "fbi_code",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "block",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "arrest",
+   "sql_type": "BOOLEAN"
+  },
+  {
+   "name": "domestic",
+   "sql_type": "BOOLEAN"
+  },
+  {
+   "name": "x_coord",
+   "sql_type": "DOUBLE"
+  },
+  {
+   "name": "y_coord",
+   "sql_type": "DOUBLE"
+  },
+  {
+   "name": "lon",
+   "sql_type": "DOUBLE"
+  },
+  {
+   "name": "lat",
+   "sql_type": "DOUBLE"
+  }
+ ],
+ "id_column": "id",
+ "time_column": "time",
+ "ts_column": "ts",
+ "order_by": [
+  "time"
+ ],
+ "row_output": "ONE ROW PER MATCH",
+ "after_match": "AFTER MATCH SKIP TO NEXT ROW",
+ "partition_by": [],
+ "window": null,
+ "kleene_annotations": []
+}
