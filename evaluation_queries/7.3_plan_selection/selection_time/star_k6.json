@@ -1,0 +1,315 @@
+{
+ "name": "synth_star_k6",
+ "id_column": "id",
+ "time_column": "time",
+ "ts_column": "ts",
+ "order_by": [
+  "time"
+ ],
+ "row_output": "ONE ROW PER MATCH",
+ "after_match": "AFTER MATCH SKIP TO NEXT ROW",
+ "partition_by": [],
+ "window": null,
+ "kleene_annotations": [],
+ "event_schema": [
+  {
+   "name": "id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "name": "time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "name": "ts",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "name": "primary_type",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "etype",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "lon",
+   "sql_type": "DOUBLE"
+  },
+  {
+   "name": "lat",
+   "sql_type": "DOUBLE"
+  }
+ ],
+ "pattern": {
+  "variables": [
+   "A",
+   "B",
+   "C",
+   "D",
+   "E",
+   "F"
+  ],
+  "wildcard": "Z",
+  "wildcard_quantifier": "*"
+ },
+ "variables": [
+  {
+   "name": "A",
+   "output_prefix": "a",
+   "independent_predicate_id": "A_type"
+  },
+  {
+   "name": "B",
+   "output_prefix": "b",
+   "independent_predicate_id": "B_type"
+  },
+  {
+   "name": "C",
+   "output_prefix": "c",
+   "independent_predicate_id": "C_type"
+  },
+  {
+   "name": "D",
+   "output_prefix": "d",
+   "independent_predicate_id": "D_type"
+  },
+  {
+   "name": "E",
+   "output_prefix": "e",
+   "independent_predicate_id": "E_type"
+  },
+  {
+   "name": "F",
+   "output_prefix": "f",
+   "independent_predicate_id": "F_type"
+  }
+ ],
+ "independent_predicates": [
+  {
+   "predicate_id": "A_type",
+   "kind": "independent",
+   "variables": [
+    "A"
+   ],
+   "sql_template": "A.primary_type = 'T0'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "A"
+  },
+  {
+   "predicate_id": "B_type",
+   "kind": "independent",
+   "variables": [
+    "B"
+   ],
+   "sql_template": "B.primary_type = 'T1'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "B"
+  },
+  {
+   "predicate_id": "C_type",
+   "kind": "independent",
+   "variables": [
+    "C"
+   ],
+   "sql_template": "C.primary_type = 'T2'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "C"
+  },
+  {
+   "predicate_id": "D_type",
+   "kind": "independent",
+   "variables": [
+    "D"
+   ],
+   "sql_template": "D.primary_type = 'T3'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "D"
+  },
+  {
+   "predicate_id": "E_type",
+   "kind": "independent",
+   "variables": [
+    "E"
+   ],
+   "sql_template": "E.primary_type = 'T4'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "E"
+  },
+  {
+   "predicate_id": "F_type",
+   "kind": "independent",
+   "variables": [
+    "F"
+   ],
+   "sql_template": "F.primary_type = 'T5'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "F"
+  }
+ ],
+ "dependent_predicates": [
+  {
+   "predicate_id": "A_B_spatial",
+   "kind": "dependent",
+   "variables": [
+    "A",
+    "B"
+   ],
+   "sql_template": "B.lon BETWEEN A.lon - 0.02 AND A.lon + 0.02 AND B.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02",
+   "referenced_columns": [
+    "lon",
+    "lat"
+   ],
+   "selectivity_key": "A|B"
+  },
+  {
+   "predicate_id": "A_C_spatial",
+   "kind": "dependent",
+   "variables": [
+    "A",
+    "C"
+   ],
+   "sql_template": "C.lon BETWEEN A.lon - 0.02 AND A.lon + 0.02 AND C.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02",
+   "referenced_columns": [
+    "lon",
+    "lat"
+   ],
+   "selectivity_key": "A|C"
+  },
+  {
+   "predicate_id": "A_D_spatial",
+   "kind": "dependent",
+   "variables": [
+    "A",
+    "D"
+   ],
+   "sql_template": "D.lon BETWEEN A.lon - 0.02 AND A.lon + 0.02 AND D.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02",
+   "referenced_columns": [
+    "lon",
+    "lat"
+   ],
+   "selectivity_key": "A|D"
+  },
+  {
+   "predicate_id": "A_E_spatial",
+   "kind": "dependent",
+   "variables": [
+    "A",
+    "E"
+   ],
+   "sql_template": "E.lon BETWEEN A.lon - 0.02 AND A.lon + 0.02 AND E.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02",
+   "referenced_columns": [
+    "lon",
+    "lat"
+   ],
+   "selectivity_key": "A|E"
+  },
+  {
+   "predicate_id": "A_F_spatial",
+   "kind": "dependent",
+   "variables": [
+    "A",
+    "F"
+   ],
+   "sql_template": "F.lon BETWEEN A.lon - 0.02 AND A.lon + 0.02 AND F.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02",
+   "referenced_columns": [
+    "lon",
+    "lat"
+   ],
+   "selectivity_key": "A|F"
+  }
+ ],
+ "measures": [
+  {
+   "expression": "A.id",
+   "alias": "a_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "A.time",
+   "alias": "a_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "expression": "B.id",
+   "alias": "b_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "B.time",
+   "alias": "b_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "expression": "C.id",
+   "alias": "c_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "C.time",
+   "alias": "c_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "expression": "D.id",
+   "alias": "d_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "D.time",
+   "alias": "d_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "expression": "E.id",
+   "alias": "e_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "E.time",
+   "alias": "e_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "expression": "F.id",
+   "alias": "f_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "F.time",
+   "alias": "f_time",
+   "sql_type": "TIMESTAMP(6)"
+  }
+ ],
+ "result_key_columns": [
+  "a_id",
+  "a_time",
+  "b_id",
+  "b_time",
+  "c_id",
+  "c_time",
+  "d_id",
+  "d_time",
+  "e_id",
+  "e_time",
+  "f_id",
+  "f_time"
+ ],
+ "suite_metadata": {
+  "pattern_length": 6,
+  "shape": "star",
+  "synthetic": true
+ }
+}

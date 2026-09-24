@@ -1,0 +1,228 @@
+{
+ "name": "q4_star_anchor_spatial",
+ "suite_metadata": {
+  "pattern_length": 4,
+  "shape": "star",
+  "independent_selectivity_class": "rare",
+  "dependent_predicate_strength": "canonical"
+ },
+ "variables": [
+  {
+   "name": "A",
+   "output_prefix": "a",
+   "independent_predicate_id": "A_type"
+  },
+  {
+   "name": "B",
+   "output_prefix": "b",
+   "independent_predicate_id": "B_type"
+  },
+  {
+   "name": "C",
+   "output_prefix": "c",
+   "independent_predicate_id": "C_type"
+  },
+  {
+   "name": "D",
+   "output_prefix": "d",
+   "independent_predicate_id": "D_type"
+  }
+ ],
+ "pattern": {
+  "variables": [
+   "A",
+   "B",
+   "C",
+   "D"
+  ],
+  "wildcard": "Z",
+  "wildcard_quantifier": "*"
+ },
+ "independent_predicates": [
+  {
+   "predicate_id": "A_type",
+   "kind": "independent",
+   "variables": [
+    "A"
+   ],
+   "sql_template": "A.primary_type = 'T0'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "A"
+  },
+  {
+   "predicate_id": "B_type",
+   "kind": "independent",
+   "variables": [
+    "B"
+   ],
+   "sql_template": "B.primary_type = 'T1'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "B"
+  },
+  {
+   "predicate_id": "C_type",
+   "kind": "independent",
+   "variables": [
+    "C"
+   ],
+   "sql_template": "C.primary_type = 'T2'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "C"
+  },
+  {
+   "predicate_id": "D_type",
+   "kind": "independent",
+   "variables": [
+    "D"
+   ],
+   "sql_template": "D.primary_type = 'T3'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "D"
+  }
+ ],
+ "dependent_predicates": [
+  {
+   "predicate_id": "A_B_spatial",
+   "kind": "dependent",
+   "variables": [
+    "A",
+    "B"
+   ],
+   "sql_template": "B.lon BETWEEN A.lon - 0.02 AND A.lon + 0.02 AND B.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02",
+   "referenced_columns": [
+    "lon",
+    "lat"
+   ],
+   "selectivity_key": "A|B"
+  },
+  {
+   "predicate_id": "A_C_spatial",
+   "kind": "dependent",
+   "variables": [
+    "A",
+    "C"
+   ],
+   "sql_template": "C.lon BETWEEN A.lon - 0.02 AND A.lon + 0.02 AND C.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02",
+   "referenced_columns": [
+    "lon",
+    "lat"
+   ],
+   "selectivity_key": "A|C"
+  },
+  {
+   "predicate_id": "A_D_spatial",
+   "kind": "dependent",
+   "variables": [
+    "A",
+    "D"
+   ],
+   "sql_template": "D.lon BETWEEN A.lon - 0.02 AND A.lon + 0.02 AND D.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02",
+   "referenced_columns": [
+    "lon",
+    "lat"
+   ],
+   "selectivity_key": "A|D"
+  }
+ ],
+ "measures": [
+  {
+   "expression": "A.id",
+   "alias": "a_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "A.time",
+   "alias": "a_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "expression": "B.id",
+   "alias": "b_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "B.time",
+   "alias": "b_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "expression": "C.id",
+   "alias": "c_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "C.time",
+   "alias": "c_time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "expression": "D.id",
+   "alias": "d_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "D.time",
+   "alias": "d_time",
+   "sql_type": "TIMESTAMP(6)"
+  }
+ ],
+ "result_key_columns": [
+  "a_id",
+  "a_time",
+  "b_id",
+  "b_time",
+  "c_id",
+  "c_time",
+  "d_id",
+  "d_time"
+ ],
+ "event_schema": [
+  {
+   "name": "id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "name": "time",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "name": "ts",
+   "sql_type": "TIMESTAMP(6)"
+  },
+  {
+   "name": "primary_type",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "etype",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "lon",
+   "sql_type": "DOUBLE"
+  },
+  {
+   "name": "lat",
+   "sql_type": "DOUBLE"
+  }
+ ],
+ "id_column": "id",
+ "time_column": "time",
+ "ts_column": "ts",
+ "order_by": [
+  "time"
+ ],
+ "row_output": "ONE ROW PER MATCH",
+ "after_match": "AFTER MATCH SKIP TO NEXT ROW",
+ "partition_by": [],
+ "window": null,
+ "kleene_annotations": []
+}

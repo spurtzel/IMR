@@ -1,0 +1,203 @@
+{
+ "name": "kleene4_tri_sig0.01",
+ "variables": [
+  {
+   "name": "A",
+   "output_prefix": "a",
+   "independent_predicate_id": "A_type"
+  },
+  {
+   "name": "B",
+   "output_prefix": "b",
+   "independent_predicate_id": "B_type"
+  },
+  {
+   "name": "C",
+   "output_prefix": "c",
+   "independent_predicate_id": "C_type",
+   "quantifier": "PLUS"
+  },
+  {
+   "name": "D",
+   "output_prefix": "d",
+   "independent_predicate_id": "D_type"
+  }
+ ],
+ "independent_predicates": [
+  {
+   "predicate_id": "A_type",
+   "kind": "independent",
+   "variables": [
+    "A"
+   ],
+   "sql_template": "A.primary_type = 'A'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "A"
+  },
+  {
+   "predicate_id": "B_type",
+   "kind": "independent",
+   "variables": [
+    "B"
+   ],
+   "sql_template": "B.primary_type = 'B'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "B"
+  },
+  {
+   "predicate_id": "C_type",
+   "kind": "independent",
+   "variables": [
+    "C"
+   ],
+   "sql_template": "C.primary_type = 'C'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "C"
+  },
+  {
+   "predicate_id": "D_type",
+   "kind": "independent",
+   "variables": [
+    "D"
+   ],
+   "sql_template": "D.primary_type = 'D'",
+   "referenced_columns": [
+    "primary_type"
+   ],
+   "selectivity_key": "D"
+  }
+ ],
+ "dependent_predicates": [
+  {
+   "predicate_id": "A_B_eq",
+   "kind": "dependent",
+   "variables": [
+    "A",
+    "B"
+   ],
+   "sql_template": "B.veq = A.veq",
+   "referenced_columns": [
+    "veq"
+   ],
+   "selectivity_key": "A|B"
+  },
+  {
+   "predicate_id": "A_D_rng",
+   "kind": "dependent",
+   "variables": [
+    "A",
+    "D"
+   ],
+   "sql_template": "D.vr1 BETWEEN A.vr1 - 5000 AND A.vr1 + 5000",
+   "referenced_columns": [
+    "vr1"
+   ],
+   "selectivity_key": "A|D"
+  },
+  {
+   "predicate_id": "B_D_rng",
+   "kind": "dependent",
+   "variables": [
+    "B",
+    "D"
+   ],
+   "sql_template": "D.vr2 BETWEEN B.vr2 - 5000 AND B.vr2 + 5000",
+   "referenced_columns": [
+    "vr2"
+   ],
+   "selectivity_key": "B|D"
+  }
+ ],
+ "measures": [
+  {
+   "expression": "A.id",
+   "alias": "a_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "B.id",
+   "alias": "b_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "FIRST(C.id)",
+   "alias": "c_first_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "LAST(C.id)",
+   "alias": "c_last_id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "expression": "D.id",
+   "alias": "d_id",
+   "sql_type": "BIGINT"
+  }
+ ],
+ "result_key_columns": [
+  "a_id",
+  "b_id",
+  "c_first_id",
+  "c_last_id",
+  "d_id"
+ ],
+ "event_schema": [
+  {
+   "name": "id",
+   "sql_type": "BIGINT"
+  },
+  {
+   "name": "ts",
+   "sql_type": "BIGINT"
+  },
+  {
+   "name": "primary_type",
+   "sql_type": "VARCHAR"
+  },
+  {
+   "name": "veq",
+   "sql_type": "NUMBER"
+  },
+  {
+   "name": "vr1",
+   "sql_type": "NUMBER"
+  },
+  {
+   "name": "vr2",
+   "sql_type": "NUMBER"
+  }
+ ],
+ "pattern": {
+  "variables": [
+   "A",
+   "B",
+   "C",
+   "D"
+  ],
+  "wildcard": "Z",
+  "wildcard_quantifier": "*",
+  "gap_quantifiers": [
+   "*",
+   "*?",
+   "*"
+  ]
+ },
+ "id_column": "id",
+ "time_column": "ts",
+ "ts_column": "ts",
+ "order_by": [
+  "ts"
+ ],
+ "row_output": "ONE ROW PER MATCH",
+ "after_match": "AFTER MATCH SKIP TO NEXT ROW",
+ "partition_by": [],
+ "window": null,
+ "kleene_annotations": []
+}
