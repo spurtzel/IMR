@@ -3,19 +3,9 @@
 Every module in execution/mode_b_estimator/ codes against the dataclasses, constants,
 and conventions defined here; keep field names and signatures in sync with all consumers.
 
-The estimator predicts predicate selectivity from stats only; "true" selectivity is
-measured directly against the data in Trino (the oracle). Two predicate families:
+Two predicate families:
 - Family 'A'  -> single-row filter:    ,,col OP literal''   (e.g. ,,etype = 'A''', ,,id < 500'')
 - Family 'B'  -> cross-row comparison: ,,col OP col''        (e.g. ,,a.id < b.id'', band, ordering)
-
-SQL alias convention (so the oracle builds measurement queries uniformly):
-- Family A ,,.sql'' references the single relation via alias ,,a''
-      e.g.  "a.etype = 'A'"        oracle: SELECT count(*) FROM <table> a WHERE <sql>      / N
-- Family B ,,.sql'' references two relations via aliases ,,a'' and ,,b''
-      e.g.  "a.id < b.id"          oracle: SELECT count(*) FROM <table> a, <table> b WHERE <sql>  / N^2
-  (N = row_count. Ordered pairs over the full a x b cross product, self-pairs included,
-   matching the estimator's model of two independent draws from the per-column marginals,
-   up to an O(1/N) diagonal term.)
 """
 from __future__ import annotations
 
@@ -39,12 +29,23 @@ DENSITY_HEURISTIC_THRESHOLD = 1e-3                      # StatisticRange.java:35
 # Generated events schema (workload/data/datagen/config.py EVENT_COLUMNS).
 EVENT_COLUMNS = ("id", "time", "ts", "primary_type", "etype", "lon", "lat")
 
-# Canonical CSV header for one estimate-vs-oracle measurement.
 RESULT_COLUMNS = (
     "config_id", "size", "regime", "ndv_variant", "band_variant", "temporal_variant",
     "operator", "family", "col", "other", "predicate_sql",
-    "estimate", "oracle", "abs_err", "signed_err", "rel_err", "notes",
+    "estimate", "exact", "abs_err", "signed_err", "rel_err", "notes",
 )
+
+
+def _num_or_none(value) -> Optional[float]:
+    """float(value) for numbers, numeric strings and booleans ('true' / 'false', True / False -> 1.0 / 0.0); else None."""
+    if isinstance(value, bool):
+        return 1.0 if value else 0.0
+    if isinstance(value, str) and value.strip().lower() in ("true", "false"):
+        return 1.0 if value.strip().lower() == "true" else 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 @dataclass(frozen=True)
@@ -58,9 +59,12 @@ class Frequencies:
     residual_ndv: float      # number of distinct values NOT in ,,top'' (>= 0), tail assumed uniform
 
     def freq_of(self, value_repr: str) -> float:
-        """f(value): P(a row's value == value_repr)."""
+        """f(value): P(a row's value == value_repr). Values are compared as strings; when both sides parse as
+        numbers they are compared numerically (numeric and boolean equality columns are sketched too, so a
+        literal 1.0 / True must meet the sketch's "1" / "true"; booleans count as 1 / 0)."""
+        want = _num_or_none(value_repr)
         for v, f in self.top:
-            if v == value_repr:
+            if v == value_repr or (want is not None and _num_or_none(v) == want):
                 return f
         return (self.residual_fraction / self.residual_ndv) if self.residual_ndv > 0 else 0.0
 
@@ -107,10 +111,6 @@ class ColumnStats:
     The first four fields mirror Trino's SymbolStatsEstimate {low, high, ndv, nullsFraction}
     (averageRowSize is omitted: never used for selectivity) and are the ONLY inputs the baseline
     estimator may use. math.nan means 'unknown', +/-inf an unbounded range bound.
-
-    ,,freq'' and ,,hist'' are optional cheap extensions (populated by stats_gather_plus, consumed
-    by the enriched estimator); both are single-pass O(N) aggregates, not the O(N^2) oracle, and
-    default to None.
     """
     low: float            # min(col)  (nan = unknown, -inf = unbounded)
     high: float           # max(col)  (nan = unknown, +inf = unbounded)
@@ -142,9 +142,6 @@ class TableStats:
 class Predicate:
     """A single test predicate.
 
-    The estimator reads the STRUCTURED fields; the measurement oracle reads
-    ,,.family'' + ,,.sql''. Keep both in sync.
-
     Fields by kind:
       kind='eq'|'neq'|'lt'|'le'|'gt'|'ge'  family 'A': col, literal        family 'B': col, other
       kind='between'                       family 'A': col, lo, hi
@@ -152,9 +149,6 @@ class Predicate:
       kind='offset_band' (a.col+lo <= b.col <= a.col+hi)  family 'B': col, other(=col), lo_offset, hi_offset
       kind='window' (|a.col - b.col| <= w) family 'B': col(ts), other(ts), w   (seconds)
       kind='order'  (a.col < b.col)        family 'B': col(ts), other(ts)
-    ,,literal'' is float for numeric ops; for categorical equality on a string column
-    the literal value is irrelevant to the estimate (only ndv/nf matter) but is still
-    carried for the oracle SQL.
     """
     kind: str
     family: str            # 'A' or 'B'
@@ -167,7 +161,7 @@ class Predicate:
     w: Optional[float] = None         # family B 'window' half-width (seconds)
     lo_offset: Optional[float] = None  # family B 'offset_band' lower offset relative to anchor a.col
     hi_offset: Optional[float] = None  # family B 'offset_band' upper offset relative to anchor a.col
-    sql: str = ""          # oracle predicate text (alias ,,a'', plus ,,b'' for family B)
+    sql: str = ""
     label: str = ""        # human label, e.g. 'eq:etype', 'order:ts:shared'
 
     @property
@@ -183,7 +177,6 @@ class Predicate:
 
 @dataclass(frozen=True)
 class GenConfig:
-    """One generated base-table configuration (one point in the sweep)."""
     config_id: str
     size: int                       # total rows
     regime: str = "independent"     # 'independent' | 'clustered'
@@ -194,6 +187,5 @@ class GenConfig:
     extra: Dict[str, object] = field(default_factory=dict)  # generator-specific knobs
 
 
-def rel_err(estimate: float, oracle: float, *, eps: float = 1e-9) -> float:
-    """Relative error |est - oracle| / max(|oracle|, eps). Reported alongside abs error."""
-    return abs(estimate - oracle) / max(abs(oracle), eps)
+def rel_err(estimate: float, exact: float, *, eps: float = 1e-9) -> float:
+    return abs(estimate - exact) / max(abs(exact), eps)

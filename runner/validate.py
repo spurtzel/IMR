@@ -4,8 +4,7 @@ Invalid config raises ConfigError naming the violated constraint. validate_envir
 and validate_experiment check config-level legality: backend required and known,
 selectivity_mode in {b_unified, c}, independent selectivity per-type <= 100% and sum
 <= 100%, feasibility floor at the declared (N, band-tightness), Kleene shape, band-
-tightness range, stream/batch sanity. Deliberately no gap-vs-COUNT rule: a greedy gap
-before a measured Kleene is valid operator semantics, not an illegal query.
+tightness range, stream/batch sanity.
 
 Structural spec constraints (unique vars, pattern order, predicate arity, quantifiers)
 are enforced by the central ,,validate_query_spec'' on the materialized QuerySpec;
@@ -63,9 +62,7 @@ def validate_experiment(exp: ExperimentConfig) -> None:
         raise ConfigError(f"query.topology {q.topology!r} is not one of {sorted(VALID_TOPOLOGIES)}")
     if q.predicate_class not in VALID_PREDICATE_CLASSES:
         raise ConfigError(f"query.predicate_class {q.predicate_class!r}: only "
-                          f"{sorted(VALID_PREDICATE_CLASSES)} until the Stage-1 "
-                          "materializer extension lands (non-spatial families are "
-                          "schema-supported; generator-side work)")
+                          f"{sorted(VALID_PREDICATE_CLASSES)} is supported by the data generator")
     if q.kleene is not None:
         if q.kleene.count < 1:
             raise ConfigError("query.kleene.count must be >= 1 when kleene is declared")
@@ -75,9 +72,6 @@ def validate_experiment(exp: ExperimentConfig) -> None:
         if q.kleene.gap not in VALID_GAPS:
             raise ConfigError(f"query.kleene.gap {q.kleene.gap!r} is not one of "
                               f"{sorted(VALID_GAPS)}")
-        # No gap-vs-COUNT rule on purpose: a greedy gap before a measured Kleene variable
-        # (COUNT collapses to 1) is a valid query with the correct result. The only related
-        # guard is the emitter's _assert_kleene_measures_run_capturing on the costing path.
 
     # --- data section: the two-layer selectivity model, Layer 1 ---
     if not d.stream or any(s <= 0 for s in d.stream):
@@ -228,9 +222,9 @@ def _self_test() -> int:
                   lambda: env({}), "backend is REQUIRED")
     expect_reject("unknown backend",
                   lambda: env({"backend": "sqlite"}), "not one of")
-    expect_reject("fleet on trino",
+    expect_reject("unsupported parallelism mode",
                   lambda: env({"backend": "trino",
-                               "parallelism": {"mode": "fleet", "containers": 12}}),
+                               "parallelism": {"mode": "parallel", "containers": 12}}),
                   "must be 'serial'")
     expect_reject("illegal selectivity mode",
                   lambda: exp(lambda d: d.setdefault("execution", {}).update(

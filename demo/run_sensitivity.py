@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Demo experiment 3: small-scale sensitivity analysis: clique-grow vs MATCH_RECOGNIZE.
+"""Demo: small-scale sensitivity analysis: clique-grow vs MATCH_RECOGNIZE.
 
 A one-at-a-time (OAT) sweep around a shared baseline cell, on chain patterns.
 Defaults (every value user-settable via CLI flags):

@@ -14,5 +14,10 @@ pyarrow==24.0.0
 # The CONFIG RUNNER (runner/) reads experiment.yaml / environment.yaml (safe_load only).
 PyYAML==6.0.3
 
-# The sensitivity-analysis figure (demo/plot_sensitivity.py).
+# The figures (demo/plot_sensitivity.py, reproducibility/experiments/).
 matplotlib==3.10.0
+
+# The DUCKDB backend (backends/duckdb, execution/duckdb_client.py, demo/duckdb_exec.py).
+# Pinned: the transpiler baseline's generated SQL and DuckDB's optimizer settings are
+# version-specific.
+duckdb==1.5.5

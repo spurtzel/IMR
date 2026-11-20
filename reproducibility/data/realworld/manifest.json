@@ -1,0 +1,17 @@
+{
+ "taxi": {
+  "file": "taxi_100000.parquet",
+  "rows": 100000,
+  "sha256": "d2a5c4721fbf59ebee88ec3e0b92d59239518fe6107250fdd3dfee1c00c02821"
+ },
+ "chicago": {
+  "file": "chicago_100000.parquet",
+  "rows": 100000,
+  "sha256": "5a3dd4415e883a202e07816c53df9c35551398443e1ea0726ba6cb4a38f8188d"
+ },
+ "ecommerce": {
+  "file": "ecommerce_100000.parquet",
+  "rows": 100000,
+  "sha256": "7d5bd31d6e43b1557f8b0d8e572a94a691b04297daee237f1a9790a4f6b8e709"
+ }
+}

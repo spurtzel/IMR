@@ -6,6 +6,7 @@ MATCH_RECOGNIZE.
 """
 from __future__ import annotations
 
+import math
 import os
 from typing import TYPE_CHECKING, Dict, Iterable, List, Mapping, Sequence, Set, Tuple
 
@@ -23,6 +24,7 @@ from eimer.models import (
     view_sort_key,
 )
 from eimer.sql.sql_dialect import SqlDialect, rewrite_sql
+from eimer.sql.backend import backend_for
 from eimer.sql.sql_render import (
     is_kleene_variable,
     prefixed_condition_column,
@@ -93,13 +95,13 @@ def _kleene_guardrails(strategy_with_plans: StrategyWithPlans, dep_graph: Depend
             continue
         if edge.var_left in kleene_vars or edge.var_right in kleene_vars:
             raise NotImplementedError(
-                "Dependent predicates involving Kleene variables are not supported in Path A yet"
+                "Dependent predicates involving Kleene variables are not supported"
             )
 
     for view in strategy_with_plans.strategy:
         if len(view) > 1 and any(var in kleene_vars for var in view):
             raise NotImplementedError(
-                "Multi-variable materialized views containing Kleene variables are not supported in Path A yet"
+                "Multi-variable materialized views containing Kleene variables are not supported"
             )
 
 
@@ -152,9 +154,6 @@ def _structural_predicates(left: View, right: View, left_alias: str, right_alias
         ]
 
     # INEQ: views are disjoint and neither frames the other, so positions may separate or cross.
-    # Emit the position-correct per-variable ordering for every cross pair (earlier.latest_ts <
-    # later.earliest_ts); a view-level "is left before right?" test would emit a backwards
-    # predicate (0 rows) for crossing pairs.
     predicates = []
     for left_var in sorted(left, key=lambda v: positions[v]):
         for right_var in sorted(right, key=lambda v: positions[v]):
@@ -297,7 +296,10 @@ def _canonical_source_join_sequence(sources: Set[View],
 
 
 def _singleton_scan_sql(variable: str, table_name: str, alias: str,
-                        columns_by_var: Dict[str, List[str]], independent_conditions: List[str]) -> str:
+                        columns_by_var: Dict[str, List[str]], independent_conditions: List[str],
+                        extra_conditions: "List[str] | None" = None) -> str:
+    """the projected base scan of one variable; ,,extra_conditions'' are already-rendered predicates on
+    the scan alias ,,b'' (the batch-window prefix prune) appended to the WHERE."""
     projected = [
         f"id AS {variable}_id",
         f"ts AS {variable}_ts",
@@ -308,15 +310,64 @@ def _singleton_scan_sql(variable: str, table_name: str, alias: str,
             continue
         projected.append(f"{col} AS {variable}_{col}")
 
-    where_sql = ""
-    if independent_conditions:
-        rendered = [
-            render_expression_for_base_scan(cond, variable, "b")
-            for cond in independent_conditions
-        ]
-        where_sql = " WHERE " + " AND ".join(rendered)
+    rendered = [
+        render_expression_for_base_scan(cond, variable, "b")
+        for cond in independent_conditions
+    ] + list(extra_conditions or [])
+    where_sql = (" WHERE " + " AND ".join(rendered)) if rendered else ""
 
     return f"(SELECT {', '.join(projected)} FROM {table_name} b{where_sql}) {alias}"
+
+
+# --- the batch-window prefix prune -------------------------------------------------------------
+# a view update joins the batch rows of the target's last variable against the other sources' full
+# state (the history singleton scans and the source caches). when the query bounds the distance
+# between a source variable x and the last variable y (an explicit or propagated window, ts_y - ts_x
+# <= W), no history row with x.ts < min(batch.ts) - W can join with any batch row, so the source scan
+# can be restricted to ,,x_ts >= (SELECT min(ts) FROM batch) - W'' before the join. the predicate is
+# implied by the query's window and the batch's time span, so the update result is unchanged; the
+# source side shrinks from the whole history to one batch span plus one window. the bound is the
+# conservative implied window (temporal_propagation: one extra unit per date_diff bound, because
+# engines count unit boundaries). enabled per backend (batch_window_prefix_prune); kill-switch
+# EIMER_DISABLE_PREFIX_PRUNE=1. kleene variables are skipped (their run columns are not a single ts).
+
+def _prefix_prune_enabled(dialect: SqlDialect) -> bool:
+    if os.environ.get("EIMER_DISABLE_PREFIX_PRUNE", "").lower() in ("1", "true", "yes"):
+        return False
+    return bool(backend_for(dialect).batch_window_prefix_prune)
+
+
+def _prefix_prune_bounds(dep_graph: DependencyGraph) -> Dict[Tuple[str, str], float]:
+    """conservative implied windows (ms), keyed (x, y) with pos(x) < pos(y)."""
+    from eimer.query.temporal_propagation import implied_windows
+    return implied_windows(dep_graph, conservative=True)
+
+
+def _prune_predicate_sql(ts_expr: str, w_ms: float, batch_table: str) -> str:
+    bound = int(math.ceil(w_ms - 1e-9))  # whole milliseconds, rounded up: never tighter than the window
+    return f"{ts_expr} >= (SELECT min(ts) FROM {batch_table}) - INTERVAL '{bound}' MILLISECOND"
+
+
+def _prefix_prune_variables(source: View, last_source: View, last_var: str,
+                            bounds: Dict[Tuple[str, str], float], dep_graph: DependencyGraph) -> List[Tuple[str, float]]:
+    """(variable, W_ms) for every non-Kleene variable of a non-batch source with a window to the last variable."""
+    if not bounds or source == last_source:
+        return []
+    out: List[Tuple[str, float]] = []
+    for var in sorted(source, key=lambda v: dep_graph.positions[v]):
+        if var == last_var or _is_kleene_variable(var, dep_graph):
+            continue
+        w = bounds.get((var, last_var))
+        if w is not None:
+            out.append((var, w))
+    return out
+
+
+def _pruned_cache_source_sql(table_name: str, alias: str, prune: List[Tuple[str, float]], batch_table: str) -> str:
+    if not prune:
+        return f"{table_name} {alias}"
+    where = " AND ".join(_prune_predicate_sql(f"{var}_ts", w, batch_table) for var, w in prune)
+    return f"(SELECT * FROM {table_name} WHERE {where}) {alias}"
 
 
 def _mr_group_detect_columns(variable: str, columns_by_var: Dict[str, List[str]]) -> Tuple[List[str], List[str]]:
@@ -358,7 +409,7 @@ def _mr_group_detect_update_sql(variable: str, dep_graph: DependencyGraph, colum
         # target_table is honored only in window mode; without redetect_lo it would full-rescan into
         # the real view instead of staging, almost certainly a caller bug.
         raise ValueError(
-            "_mr_group_detect_update_sql: target_table requires redetect_lo (variant-B window mode)")
+            "_mr_group_detect_update_sql: target_table requires redetect_lo")
 
     if redetect_lo is None:
         # default path: full rescan of the base table.
@@ -385,8 +436,7 @@ def _mr_group_detect_update_sql(variable: str, dep_graph: DependencyGraph, colum
     # current batch] and APPEND every detected run (no WHERE EXISTS). The read-side _kleene_dedup_cte
     # keeps the longest run per first_id, so the view is never rewritten in place and never indexed.
     # ,,redetect_lo'' is the run start left open at the previous boundary (O(1) state the runner
-    # carries); it is rendered VERBATIM, so a caller may pass an int literal or a ':redetect_lo_<label>'
-    # placeholder.
+    # carries); it is rendered as passed.
     dest = target_table or table_name
     redetect_src = (
         f"(SELECT * FROM {base_table} "
@@ -495,12 +545,16 @@ def _emit_source_tree_node(tree: JoinTreeNode, source_sql: Dict[View, str], sour
 
 
 def generate_update_sql_statements(strategy_with_plans: StrategyWithPlans, dep_graph: DependencyGraph,
-                                   update_plan: UpdatePlan, base_table: str, batch_table: str) -> List[str]:
+                                   update_plan: UpdatePlan, base_table: str, batch_table: str, *,
+                                   prefix_prune: bool = False) -> List[str]:
+    """one INSERT per maintained view in topological order. ,,prefix_prune'' applies the batch-window
+    prefix prune to every non-batch source (see _prefix_prune_enabled); off by default."""
     _kleene_guardrails(strategy_with_plans, dep_graph)
 
     positions = dep_graph.positions
     strategy = strategy_with_plans.strategy
     columns_by_var = collect_referenced_columns(dep_graph)
+    prune_bounds = _prefix_prune_bounds(dep_graph) if prefix_prune else {}
 
     statements: List[str] = []
     for target_view in update_plan.topological_order:
@@ -526,7 +580,7 @@ def generate_update_sql_statements(strategy_with_plans: StrategyWithPlans, dep_g
         kleene_vars_in_target = [var for var in target_view if _is_kleene_variable(var, dep_graph)]
         if kleene_vars_in_target:
             raise NotImplementedError(
-                "JOIN-mode updates for target views containing Kleene variables are not supported in Path A yet"
+                "JOIN-mode updates for target views containing Kleene variables are not supported"
             )
 
         selected_sources = update_plan.source_selections[target_view]
@@ -538,11 +592,13 @@ def generate_update_sql_statements(strategy_with_plans: StrategyWithPlans, dep_g
             for source in sorted(effective_sources, key=lambda view: view_sort_key(view, positions))
         }
 
+        target_last_var = max(target_view, key=lambda var: positions[var])
         source_sql: Dict[View, str] = {}
         for source in effective_sources:
             alias = source_aliases[source]
+            prune = _prefix_prune_variables(source, last_source, target_last_var, prune_bounds, dep_graph)
             if source in selected_sources:
-                source_sql[source] = f"{_view_table_name(source, positions)} {alias}"
+                source_sql[source] = _pruned_cache_source_sql(_view_table_name(source, positions), alias, prune, batch_table)
                 continue
 
             if len(source) != 1:
@@ -551,7 +607,7 @@ def generate_update_sql_statements(strategy_with_plans: StrategyWithPlans, dep_g
             variable = next(iter(source))
             if _is_kleene_variable(variable, dep_graph):
                 raise NotImplementedError(
-                    "Implicit singleton base scans for Kleene variables are not supported in Path A yet"
+                    "Implicit singleton base scans for Kleene variables are not supported"
                 )
             is_last_source = source == last_source
             table_name = batch_table if is_last_source else base_table
@@ -561,6 +617,7 @@ def generate_update_sql_statements(strategy_with_plans: StrategyWithPlans, dep_g
                 alias,
                 columns_by_var,
                 dep_graph.independent_conditions.get(variable, []),
+                [_prune_predicate_sql("b.ts", w, batch_table) for _var, w in prune],
             )
 
         source_tree = (
@@ -663,7 +720,7 @@ def generate_update_sql_statements(strategy_with_plans: StrategyWithPlans, dep_g
         for var in _ordered_vars(target_view, positions):
             if _is_kleene_variable(var, dep_graph):
                 raise NotImplementedError(
-                    "JOIN-mode projection for Kleene variables is not supported in Path A yet"
+                    "JOIN-mode projection for Kleene variables is not supported"
                 )
             alias = var_to_alias[var]
             select_columns.append(f"{alias}.{var}_id AS {var}_id")
@@ -866,6 +923,14 @@ def _emit_tree_node(tree: JoinTreeNode, node_sql: Dict[View, str], node_aliases:
     return sql, alias, merged
 
 
+def _compose_tree_emission_enabled() -> bool:
+    """Whether ,,generate_sql_statements_for_cover'' renders the composition over
+    ,,CompositionPlan.join_tree'' (the join tree the cost model prices). Default ON; with
+    ,,EIMER_DISABLE_COMPOSE_TREE=1'' the tree is dropped and the leaves are composed as the
+    canonical positional left-deep chain."""
+    return os.environ.get("EIMER_DISABLE_COMPOSE_TREE", "").lower() not in ("1", "true", "on", "yes")
+
+
 def generate_composition_tree_sql(strategy_with_plans: StrategyWithPlans, dep_graph: DependencyGraph,
                                   composition_nodes: Iterable[View], join_tree: JoinTreeNode,
                                   base_table: str) -> str:
@@ -899,11 +964,19 @@ def generate_composition_tree_sql(strategy_with_plans: StrategyWithPlans, dep_gr
         join_tree, node_sql, node_aliases, dep_graph, columns_by_var, [0]
     )
 
+    # Same outer SELECT list as the left-deep path: the id/ts keys, then the MEASURES value columns
+    # that are not already a key (the post-filter projects them; without them a measures query fails).
+    measure_cols_by_var: Dict[str, set] = {}
+    for _m in dep_graph.measures:
+        measure_cols_by_var.setdefault(_m.variable, set()).add(_measure_cache_column(_m))
     select_columns: List[str] = []
     for var in dep_graph.variables:
         alias = var_to_alias[var]
-        select_columns.append(f"{alias}.{var}_id AS {var}_id")
-        select_columns.append(f"{alias}.{var}_ts AS {var}_ts")
+        key_cols = [f"{var}_id", f"{var}_ts"]
+        for col in key_cols:
+            select_columns.append(f"{alias}.{col} AS {col}")
+        for col in sorted(measure_cols_by_var.get(var, set()) - set(key_cols)):
+            select_columns.append(f"{alias}.{col} AS {col}")
 
     global_sequence_predicates = _adjacent_sequence_predicates(
         _ordered_vars_for_sequence(dep_graph.variables, positions),
@@ -961,7 +1034,7 @@ def generate_composition_sql_for_nodes(strategy_with_plans: StrategyWithPlans, d
             continue
         if node not in strategy:
             raise NotImplementedError(
-                "Implicit singleton base scans for Kleene variables are not supported in Path A yet"
+                "Implicit singleton base scans for Kleene variables are not supported"
             )
         cte_name, cte_sql = _kleene_dedup_cte(node, positions)
         kleene_cte_name_by_node[node] = cte_name
@@ -973,7 +1046,7 @@ def generate_composition_sql_for_nodes(strategy_with_plans: StrategyWithPlans, d
         if node in strategy:
             if len(node) > 1 and any(_is_kleene_variable(var, dep_graph) for var in node):
                 raise NotImplementedError(
-                    "Composition over multi-variable views containing Kleene variables is not supported in Path A yet"
+                    "Composition over multi-variable views containing Kleene variables is not supported"
                 )
             if node in kleene_cte_name_by_node:
                 node_sql[node] = f"{kleene_cte_name_by_node[node]} {alias}"
@@ -987,7 +1060,7 @@ def generate_composition_sql_for_nodes(strategy_with_plans: StrategyWithPlans, d
         variable = next(iter(node))
         if _is_kleene_variable(variable, dep_graph):
             raise NotImplementedError(
-                "Implicit singleton base scans for Kleene variables are not supported in Path A yet"
+                "Implicit singleton base scans for Kleene variables are not supported"
             )
         node_sql[node] = _singleton_scan_sql(
             variable,
@@ -1175,14 +1248,14 @@ def _assert_kleene_measures_run_capturing(dep_graph: DependencyGraph) -> None:
                 raise NotImplementedError(
                     f"Kleene aggregate MEASURES over reluctant Kleene {var!r} (v+?) are not modeled: EIMER's "
                     f"run-cache captures the MAXIMAL run (v+), which equals the minimal-run reluctant semantics "
-                    f"only at length 1. Use a greedy Kleene (v+). See docs/measures_schema_min.md."
+                    f"only at length 1. Use a greedy Kleene (v+)."
                 )
             mode = gap_before.get(var)
             if mode is not None and mode != "RELUCTANT":
                 raise NotImplementedError(
                     f"Kleene aggregate MEASURES over {var!r} require a run-capturing pattern: a reluctant gap "
                     f"'Z*?' before {var} (or {var} pattern-initial). The greedy gap 'Z*' before it is "
-                    f"run-eating (COUNT collapses to 1) and cannot be modeled. See docs/measures_schema_min.md."
+                    f"run-eating (COUNT collapses to 1) and cannot be modeled."
                 )
 
 
@@ -1244,6 +1317,16 @@ def generate_post_filter_sql(composition_sql: str, dep_graph_or_variables: Depen
     )
 
 
+def _require_native_mr_for_kleene(dep_graph: DependencyGraph, dialect: SqlDialect) -> None:
+    """Kleene run caches are (re-)detected with a native MATCH_RECOGNIZE statement, so a
+    dialect without one (duckdb) cannot execute them: fail loud before any SQL is rendered."""
+    kleene = _kleene_variables(dep_graph)
+    if kleene and not backend_for(dialect).supports_native_match_recognize:
+        raise ValueError(
+            f"dialect {dialect.value!r} has no native MATCH_RECOGNIZE, which the Kleene run cache "
+            f"of {sorted(kleene)} requires; Kleene queries are not supported on this dialect")
+
+
 def _statements_for_dialect(statements: SQLStatements, dialect: SqlDialect) -> SQLStatements:
     """Apply the dialect's emit-time SQL rewrites. TRINO returns the input unchanged."""
     if dialect is SqlDialect.TRINO:
@@ -1261,8 +1344,9 @@ def generate_sql_statements_for_cover(strategy_with_plans: StrategyWithPlans, de
                                       batch_table: str = "events_batch", *,
                                       dialect: SqlDialect = SqlDialect.TRINO) -> SQLStatements:
     """render SQL for a maintained strategy with an explicit composition cover. ,,dialect'' selects the
-    target SQL dialect: TRINO is the default and only shipped dialect; any other fails loud in the
-    backend registry."""
+    target SQL dialect (TRINO is the default; DUCKDB is the second dialect; any other fails loud
+    in the backend registry)."""
+    _require_native_mr_for_kleene(dep_graph, dialect)
 
     update_statements = generate_update_sql_statements(
         strategy_with_plans,
@@ -1270,14 +1354,18 @@ def generate_sql_statements_for_cover(strategy_with_plans: StrategyWithPlans, de
         update_plan,
         base_table,
         batch_table,
+        prefix_prune=_prefix_prune_enabled(dialect),
     )
 
+    # Execute the join tree the plan carries (the one the cost model prices). A plan without a tree
+    # (canonical / left-deep DP) and any Kleene query keep the left-deep chain.
     composition_sql = generate_composition_sql_for_nodes(
         strategy_with_plans,
         dep_graph,
         composition_nodes,
         composition_plan,
         base_table,
+        join_tree=composition_plan.join_tree if _compose_tree_emission_enabled() else None,
     )
 
     post_filter_sql = generate_post_filter_sql(composition_sql, dep_graph)

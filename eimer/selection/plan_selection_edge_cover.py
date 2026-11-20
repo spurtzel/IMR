@@ -5,7 +5,10 @@ value edge X-Y becomes a 2-view make_view([X,Y]). the pick is the full edge-cove
 by priority (sigma ascending, span descending); uncovered variables auto-fill as singleton base scans
 in build_plan. the returned .score is a structural proxy (-n_equi_join_steps).
 """
+import os
+
 from eimer.models import make_view, view_sort_key
+from eimer.query.temporal_propagation import explicit_selection_inputs
 from eimer.selection.join_order import _edge_sigma, analytic_node_size, within_storage_budget
 from eimer.selection.plan_build import PlanResult, build_plan, valid_views, label, with_kleene_caches
 
@@ -23,6 +26,9 @@ def select_edge_cover_plan(dep, workload, *, profile=None, max_views=4, query_ba
     singleton base scans)."""
     if workload is None:
         raise ValueError("select_edge_cover_plan requires a workload (build_plan needs a sigma source)")
+    dep_exec, wl_exec = dep, workload
+    if os.environ.get("EIMER_SELECT_ON_DERIVED") != "1":
+        dep, workload = explicit_selection_inputs(dep, workload)
     pos = dep.positions
     all_vars = set(dep.variables)
     bidx = len(workload.batch_sizes)            # qlast snapshot for sigma/card (stable for ConstantSelectivity)
@@ -110,7 +116,7 @@ def select_edge_cover_plan(dep, workload, *, profile=None, max_views=4, query_ba
         cover = frozenset(c["view"] for c in survivors)
 
     # STEP 5: build the plan; uncovered variables auto-fill as singletons in compose
-    strategy, evaluation_plan, _ = build_plan(dep, cover, cover, all_vars, workload=workload)
+    strategy, evaluation_plan, _ = build_plan(dep_exec, cover, cover, all_vars, workload=wl_exec)
     cert = {"selector": "edge_cover",
             "n_edges": len(seen), "n_kept": len(cover), "n_equi_join_steps": _n_equi(cover),
             "capped": capped, "cover_label": label(cover, pos)}

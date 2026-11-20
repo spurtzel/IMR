@@ -1,0 +1,1120 @@
+{
+ "note": "Reference values of the paper's runs (server: Intel Xeon Silver 4314, 256 GB RAM, Ubuntu 22.04), per cell: the selected strategy, the number of matches, and the measured runtimes / memory. Picks, match counts and the data fingerprint are expected to reproduce exactly; runtimes and memory depend on the machine.",
+ "duckdb": {
+  "k3_n25000_b25_w60": {
+   "pick": [
+    "A_B",
+    "A_C"
+   ],
+   "matches": 3385,
+   "transpiled": {
+    "status": "ok",
+    "total_s": 23.09,
+    "peak_memory_mb": 144.7
+   },
+   "eimer": {
+    "status": "ok",
+    "total_s": 0.64,
+    "peak_memory_mb": 25.8,
+    "nested_composition": true
+   }
+  },
+  "k4_n1000000_b1000_w60": {
+   "pick": [
+    "A_B",
+    "A_D",
+    "B_C"
+   ],
+   "matches": 90573,
+   "transpiled": {
+    "status": "dnf",
+    "total_s": null,
+    "peak_memory_mb": null
+   },
+   "eimer": {
+    "status": "ok",
+    "total_s": 353.01,
+    "peak_memory_mb": 285.6,
+    "nested_composition": true
+   }
+  },
+  "k4_n100000_b100_w60": {
+   "pick": [
+    "A_B",
+    "A_D",
+    "B_C"
+   ],
+   "matches": 9048,
+   "transpiled": {
+    "status": "ok",
+    "total_s": 448.54,
+    "peak_memory_mb": 642.1
+   },
+   "eimer": {
+    "status": "ok",
+    "total_s": 6.24,
+    "peak_memory_mb": 58.9,
+    "nested_composition": true
+   }
+  },
+  "k4_n10000_b10_w60": {
+   "pick": [
+    "A_B",
+    "A_D",
+    "B_C"
+   ],
+   "matches": 876,
+   "transpiled": {
+    "status": "ok",
+    "total_s": 7.05,
+    "peak_memory_mb": 194.3
+   },
+   "eimer": {
+    "status": "ok",
+    "total_s": 0.32,
+    "peak_memory_mb": 25.5,
+    "nested_composition": true
+   }
+  },
+  "k4_n250000_b250_w60": {
+   "pick": [
+    "A_B",
+    "A_D",
+    "B_C"
+   ],
+   "matches": 22724,
+   "transpiled": {
+    "status": "ok",
+    "total_s": 2912.7,
+    "peak_memory_mb": 1513.2
+   },
+   "eimer": {
+    "status": "ok",
+    "total_s": 27.87,
+    "peak_memory_mb": 117.1,
+    "nested_composition": true
+   }
+  },
+  "k4_n25000_b25_w60": {
+   "pick": [
+    "A_B",
+    "A_D",
+    "B_C"
+   ],
+   "matches": 2260,
+   "transpiled": {
+    "status": "ok",
+    "total_s": 32.73,
+    "peak_memory_mb": 215.7
+   },
+   "eimer": {
+    "status": "ok",
+    "total_s": 0.95,
+    "peak_memory_mb": 30.0,
+    "nested_composition": true
+   }
+  },
+  "k4_n500000_b500_w60": {
+   "pick": [
+    "A_B",
+    "A_D",
+    "B_C"
+   ],
+   "matches": 45517,
+   "transpiled": {
+    "status": "dnf",
+    "total_s": null,
+    "peak_memory_mb": null
+   },
+   "eimer": {
+    "status": "ok",
+    "total_s": 95.99,
+    "peak_memory_mb": 168.1,
+    "nested_composition": true
+   }
+  },
+  "k4_n50000_b50_w60": {
+   "pick": [
+    "A_B",
+    "A_D",
+    "B_C"
+   ],
+   "matches": 4475,
+   "transpiled": {
+    "status": "ok",
+    "total_s": 109.18,
+    "peak_memory_mb": 333.7
+   },
+   "eimer": {
+    "status": "ok",
+    "total_s": 2.31,
+    "peak_memory_mb": 55.2,
+    "nested_composition": true
+   }
+  },
+  "k4_n5000_b5_w60": {
+   "pick": [
+    "A_B",
+    "A_D",
+    "B_C"
+   ],
+   "matches": 468,
+   "transpiled": {
+    "status": "ok",
+    "total_s": 2.79,
+    "peak_memory_mb": 166.4
+   },
+   "eimer": {
+    "status": "ok",
+    "total_s": 0.15,
+    "peak_memory_mb": 18.1,
+    "nested_composition": true
+   }
+  },
+  "k5_n25000_b25_w60": {
+   "pick": [
+    "A_B",
+    "B_C",
+    "C_D",
+    "D_E"
+   ],
+   "matches": 1239,
+   "transpiled": {
+    "status": "ok",
+    "total_s": 41.41,
+    "peak_memory_mb": 289.1
+   },
+   "eimer": {
+    "status": "ok",
+    "total_s": 1.18,
+    "peak_memory_mb": 30.6,
+    "nested_composition": true
+   }
+  },
+  "k6_n25000_b25_w60": {
+   "pick": [
+    "A_B",
+    "B_C",
+    "C_D",
+    "D_E",
+    "E_F"
+   ],
+   "matches": 584,
+   "transpiled": {
+    "status": "ok",
+    "total_s": 48.14,
+    "peak_memory_mb": 342.8
+   },
+   "eimer": {
+    "status": "ok",
+    "total_s": 1.45,
+    "peak_memory_mb": 38.7,
+    "nested_composition": true
+   }
+  },
+  "k7_n25000_b25_w60": {
+   "pick": [
+    "A_B",
+    "B_C",
+    "C_D",
+    "D_E",
+    "E_F",
+    "F_G"
+   ],
+   "matches": 220,
+   "transpiled": {
+    "status": "ok",
+    "total_s": 54.34,
+    "peak_memory_mb": 434.4
+   },
+   "eimer": {
+    "status": "ok",
+    "total_s": 1.74,
+    "peak_memory_mb": 43.7,
+    "nested_composition": true
+   }
+  },
+  "k8_n25000_b25_w60": {
+   "pick": [
+    "A_B",
+    "A_H",
+    "B_C",
+    "C_D",
+    "D_E",
+    "E_F",
+    "F_G"
+   ],
+   "matches": 67,
+   "transpiled": {
+    "status": "ok",
+    "total_s": 59.82,
+    "peak_memory_mb": 464.8
+   },
+   "eimer": {
+    "status": "ok",
+    "total_s": 2.03,
+    "peak_memory_mb": 51.7,
+    "nested_composition": true
+   }
+  }
+ },
+ "esper": {
+  "fig8s005": {
+   "k4_n100000_b500_w1000": {
+    "pick": [
+     "A_B",
+     "A_D",
+     "B_C"
+    ],
+    "data_sha256_16": "086f76137da273a8",
+    "matches": 2329,
+    "arms": {
+     "esper_native": {
+      "status": "ok",
+      "cover": null,
+      "total_s": 692.62,
+      "peak_memory_mb": 44.2
+     },
+     "eimer_esper": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_D",
+       "B_C"
+      ],
+      "total_s": 385.49,
+      "peak_memory_mb": 270.4
+     },
+     "eimer_esper_edge": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_D",
+       "B_C",
+       "C_D"
+      ],
+      "total_s": 583.66,
+      "peak_memory_mb": 325.1
+     },
+     "eimer_esper_prefix": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_B_C",
+       "A_B_C_D"
+      ],
+      "total_s": 36.29,
+      "peak_memory_mb": 230.2
+     },
+     "eimer_esper_singletons": {
+      "status": "ok",
+      "cover": [
+       "A",
+       "B",
+       "C",
+       "D"
+      ],
+      "total_s": 3191.97,
+      "peak_memory_mb": 225.3
+     }
+    }
+   },
+   "k4_n10000_b50_w1000": {
+    "pick": [
+     "A_B",
+     "A_D",
+     "B_C"
+    ],
+    "data_sha256_16": "bac95dc1061621b2",
+    "matches": 206,
+    "arms": {
+     "esper_native": {
+      "status": "ok",
+      "cover": null,
+      "total_s": 9.28,
+      "peak_memory_mb": 8.8
+     },
+     "eimer_esper": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_D",
+       "B_C"
+      ],
+      "total_s": 6.44,
+      "peak_memory_mb": 29.1
+     },
+     "eimer_esper_edge": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_D",
+       "B_C",
+       "C_D"
+      ],
+      "total_s": 7.76,
+      "peak_memory_mb": 32.3
+     },
+     "eimer_esper_prefix": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_B_C",
+       "A_B_C_D"
+      ],
+      "total_s": 2.24,
+      "peak_memory_mb": 28.0
+     },
+     "eimer_esper_singletons": {
+      "status": "ok",
+      "cover": [
+       "A",
+       "B",
+       "C",
+       "D"
+      ],
+      "total_s": 4.91,
+      "peak_memory_mb": 20.9
+     }
+    }
+   },
+   "k4_n2000_b10_w1000": {
+    "pick": [],
+    "data_sha256_16": "ebc7fe09eb228525",
+    "matches": 44,
+    "arms": {
+     "esper_native": {
+      "status": "ok",
+      "cover": null,
+      "total_s": 1.51,
+      "peak_memory_mb": 5.5
+     },
+     "eimer_esper": {
+      "status": "ok",
+      "cover": [],
+      "total_s": 0.38,
+      "peak_memory_mb": 8.2
+     },
+     "eimer_esper_edge": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_D",
+       "B_C",
+       "C_D"
+      ],
+      "total_s": 1.16,
+      "peak_memory_mb": 10.7
+     },
+     "eimer_esper_prefix": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_B_C",
+       "A_B_C_D"
+      ],
+      "total_s": 0.57,
+      "peak_memory_mb": 10.8
+     },
+     "eimer_esper_singletons": {
+      "status": "ok",
+      "cover": [
+       "A",
+       "B",
+       "C",
+       "D"
+      ],
+      "total_s": 0.35,
+      "peak_memory_mb": 8.2
+     }
+    }
+   },
+   "k4_n250000_b1250_w1000": {
+    "pick": [
+     "A_B",
+     "A_D",
+     "B_C"
+    ],
+    "data_sha256_16": "244104b1e70d4830",
+    "matches": 5831,
+    "arms": {
+     "esper_native": {
+      "status": "dnf",
+      "cover": null,
+      "total_s": 3593.19,
+      "peak_memory_mb": null
+     },
+     "eimer_esper": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_D",
+       "B_C"
+      ],
+      "total_s": 2898.53,
+      "peak_memory_mb": 669.0
+     },
+     "eimer_esper_edge": {
+      "status": "dnf",
+      "cover": [
+       "A_B",
+       "A_D",
+       "B_C",
+       "C_D"
+      ],
+      "total_s": 3592.15,
+      "peak_memory_mb": null
+     },
+     "eimer_esper_prefix": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_B_C",
+       "A_B_C_D"
+      ],
+      "total_s": 199.0,
+      "peak_memory_mb": 564.1
+     },
+     "eimer_esper_singletons": {
+      "status": "dnf",
+      "cover": [
+       "A",
+       "B",
+       "C",
+       "D"
+      ],
+      "total_s": 3578.6,
+      "peak_memory_mb": null
+     }
+    }
+   },
+   "k4_n25000_b125_w1000": {
+    "pick": [
+     "A_B",
+     "A_D",
+     "B_C"
+    ],
+    "data_sha256_16": "e3482e93146888c1",
+    "matches": 579,
+    "arms": {
+     "esper_native": {
+      "status": "ok",
+      "cover": null,
+      "total_s": 45.73,
+      "peak_memory_mb": 14.9
+     },
+     "eimer_esper": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_D",
+       "B_C"
+      ],
+      "total_s": 24.82,
+      "peak_memory_mb": 65.8
+     },
+     "eimer_esper_edge": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_D",
+       "B_C",
+       "C_D"
+      ],
+      "total_s": 32.2,
+      "peak_memory_mb": 77.2
+     },
+     "eimer_esper_prefix": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_B_C",
+       "A_B_C_D"
+      ],
+      "total_s": 5.98,
+      "peak_memory_mb": 60.8
+     },
+     "eimer_esper_singletons": {
+      "status": "ok",
+      "cover": [
+       "A",
+       "B",
+       "C",
+       "D"
+      ],
+      "total_s": 39.73,
+      "peak_memory_mb": 44.9
+     }
+    }
+   },
+   "k4_n500000_b2500_w1000": {
+    "pick": [
+     "A_B",
+     "A_D",
+     "B_C"
+    ],
+    "data_sha256_16": "8ba0809248d8e819",
+    "matches": 11556,
+    "arms": {
+     "esper_native": {
+      "status": "dnf",
+      "cover": null,
+      "total_s": 3593.69,
+      "peak_memory_mb": null
+     },
+     "eimer_esper": {
+      "status": "dnf",
+      "cover": [
+       "A_B",
+       "A_D",
+       "B_C"
+      ],
+      "total_s": 3599.44,
+      "peak_memory_mb": null
+     },
+     "eimer_esper_edge": {
+      "status": "dnf",
+      "cover": [
+       "A_B",
+       "A_D",
+       "B_C",
+       "C_D"
+      ],
+      "total_s": 3596.58,
+      "peak_memory_mb": null
+     },
+     "eimer_esper_prefix": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_B_C",
+       "A_B_C_D"
+      ],
+      "total_s": 736.83,
+      "peak_memory_mb": 1112.6
+     },
+     "eimer_esper_singletons": {
+      "status": "dnf",
+      "cover": [
+       "A",
+       "B",
+       "C",
+       "D"
+      ],
+      "total_s": 3588.36,
+      "peak_memory_mb": null
+     }
+    }
+   },
+   "k4_n50000_b250_w1000": {
+    "pick": [
+     "A_B",
+     "A_D",
+     "B_C"
+    ],
+    "data_sha256_16": "03e835a98693159b",
+    "matches": 1122,
+    "arms": {
+     "esper_native": {
+      "status": "ok",
+      "cover": null,
+      "total_s": 175.21,
+      "peak_memory_mb": 25.0
+     },
+     "eimer_esper": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_D",
+       "B_C"
+      ],
+      "total_s": 87.39,
+      "peak_memory_mb": 179.6
+     },
+     "eimer_esper_edge": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_D",
+       "B_C",
+       "C_D"
+      ],
+      "total_s": 116.76,
+      "peak_memory_mb": 185.5
+     },
+     "eimer_esper_prefix": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_B_C",
+       "A_B_C_D"
+      ],
+      "total_s": 12.72,
+      "peak_memory_mb": 113.3
+     },
+     "eimer_esper_singletons": {
+      "status": "ok",
+      "cover": [
+       "A",
+       "B",
+       "C",
+       "D"
+      ],
+      "total_s": 290.79,
+      "peak_memory_mb": 84.1
+     }
+    }
+   },
+   "k4_n5000_b25_w1000": {
+    "pick": [
+     "A_B",
+     "A_D",
+     "B_C"
+    ],
+    "data_sha256_16": "2c0b96f9255ea8b8",
+    "matches": 102,
+    "arms": {
+     "esper_native": {
+      "status": "ok",
+      "cover": null,
+      "total_s": 3.08,
+      "peak_memory_mb": 6.7
+     },
+     "eimer_esper": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_D",
+       "B_C"
+      ],
+      "total_s": 2.8,
+      "peak_memory_mb": 17.2
+     },
+     "eimer_esper_edge": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_D",
+       "B_C",
+       "C_D"
+      ],
+      "total_s": 3.09,
+      "peak_memory_mb": 18.8
+     },
+     "eimer_esper_prefix": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_B_C",
+       "A_B_C_D"
+      ],
+      "total_s": 1.19,
+      "peak_memory_mb": 16.3
+     },
+     "eimer_esper_singletons": {
+      "status": "ok",
+      "cover": [
+       "A",
+       "B",
+       "C",
+       "D"
+      ],
+      "total_s": 0.93,
+      "peak_memory_mb": 13.0
+     }
+    }
+   }
+  },
+  "fig8s005n25k": {
+   "k3_n25000_b25_w1000": {
+    "pick": [
+     "A_B",
+     "A_C"
+    ],
+    "data_sha256_16": "e3482e93146888c1",
+    "matches": 823,
+    "arms": {
+     "esper_native": {
+      "status": "ok",
+      "cover": null,
+      "total_s": 7.55,
+      "peak_memory_mb": 15.1
+     },
+     "eimer_esper": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_C"
+      ],
+      "total_s": 3.92,
+      "peak_memory_mb": 78.3
+     },
+     "eimer_esper_edge": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_C",
+       "B_C"
+      ],
+      "total_s": 5.73,
+      "peak_memory_mb": 76.4
+     },
+     "eimer_esper_prefix": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_B_C"
+      ],
+      "total_s": 2.89,
+      "peak_memory_mb": 38.6
+     },
+     "eimer_esper_singletons": {
+      "status": "ok",
+      "cover": [
+       "A",
+       "B",
+       "C"
+      ],
+      "total_s": 7.22,
+      "peak_memory_mb": 35.8
+     }
+    }
+   },
+   "k4_n25000_b25_w1000": {
+    "pick": [
+     "A_B",
+     "A_D",
+     "B_C"
+    ],
+    "data_sha256_16": "e3482e93146888c1",
+    "matches": 579,
+    "arms": {
+     "esper_native": {
+      "status": "ok",
+      "cover": null,
+      "total_s": 11.68,
+      "peak_memory_mb": 15.4
+     },
+     "eimer_esper": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_D",
+       "B_C"
+      ],
+      "total_s": 9.56,
+      "peak_memory_mb": 66.8
+     },
+     "eimer_esper_edge": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_D",
+       "B_C",
+       "C_D"
+      ],
+      "total_s": 12.12,
+      "peak_memory_mb": 74.2
+     },
+     "eimer_esper_prefix": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_B_C",
+       "A_B_C_D"
+      ],
+      "total_s": 4.79,
+      "peak_memory_mb": 61.8
+     },
+     "eimer_esper_singletons": {
+      "status": "ok",
+      "cover": [
+       "A",
+       "B",
+       "C",
+       "D"
+      ],
+      "total_s": 11.38,
+      "peak_memory_mb": 45.7
+     }
+    }
+   },
+   "k5_n25000_b25_w1000": {
+    "pick": [
+     "A_B",
+     "B_C",
+     "C_D",
+     "D_E"
+    ],
+    "data_sha256_16": "e3482e93146888c1",
+    "matches": 410,
+    "arms": {
+     "esper_native": {
+      "status": "ok",
+      "cover": null,
+      "total_s": 15.58,
+      "peak_memory_mb": 15.4
+     },
+     "eimer_esper": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "B_C",
+       "C_D",
+       "D_E"
+      ],
+      "total_s": 5.27,
+      "peak_memory_mb": 46.1
+     },
+     "eimer_esper_edge": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_E",
+       "B_C",
+       "C_D_E"
+      ],
+      "total_s": 17.77,
+      "peak_memory_mb": 98.9
+     },
+     "eimer_esper_prefix": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_B_C",
+       "A_B_C_D",
+       "A_B_C_D_E"
+      ],
+      "total_s": 8.15,
+      "peak_memory_mb": 90.3
+     },
+     "eimer_esper_singletons": {
+      "status": "ok",
+      "cover": [
+       "A",
+       "B",
+       "C",
+       "D",
+       "E"
+      ],
+      "total_s": 16.96,
+      "peak_memory_mb": 55.4
+     }
+    }
+   },
+   "k6_n25000_b25_w1000": {
+    "pick": [
+     "A_B",
+     "B_C",
+     "C_D",
+     "D_E",
+     "E_F"
+    ],
+    "data_sha256_16": "e3482e93146888c1",
+    "matches": 287,
+    "arms": {
+     "esper_native": {
+      "status": "ok",
+      "cover": null,
+      "total_s": 18.07,
+      "peak_memory_mb": 15.3
+     },
+     "eimer_esper": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "B_C",
+       "C_D",
+       "D_E",
+       "E_F"
+      ],
+      "total_s": 6.84,
+      "peak_memory_mb": 53.4
+     },
+     "eimer_esper_edge": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_F",
+       "B_C",
+       "C_D_E_F"
+      ],
+      "total_s": 16.59,
+      "peak_memory_mb": 112.3
+     },
+     "eimer_esper_prefix": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_B_C",
+       "A_B_C_D",
+       "A_B_C_D_E",
+       "A_B_C_D_E_F"
+      ],
+      "total_s": 10.26,
+      "peak_memory_mb": 123.5
+     },
+     "eimer_esper_singletons": {
+      "status": "ok",
+      "cover": [
+       "A",
+       "B",
+       "C",
+       "D",
+       "E",
+       "F"
+      ],
+      "total_s": 24.59,
+      "peak_memory_mb": 64.7
+     }
+    }
+   },
+   "k7_n25000_b25_w1000": {
+    "pick": [
+     "A_B",
+     "B_C",
+     "C_D",
+     "D_E",
+     "E_F",
+     "F_G"
+    ],
+    "data_sha256_16": "e3482e93146888c1",
+    "matches": 189,
+    "arms": {
+     "esper_native": {
+      "status": "ok",
+      "cover": null,
+      "total_s": 22.07,
+      "peak_memory_mb": 15.3
+     },
+     "eimer_esper": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "B_C",
+       "C_D",
+       "D_E",
+       "E_F",
+       "F_G"
+      ],
+      "total_s": 8.42,
+      "peak_memory_mb": 60.8
+     },
+     "eimer_esper_edge": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_G",
+       "B_C",
+       "C_D_E_F_G"
+      ],
+      "total_s": 17.59,
+      "peak_memory_mb": 116.7
+     },
+     "eimer_esper_prefix": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_B_C",
+       "A_B_C_D",
+       "A_B_C_D_E",
+       "A_B_C_D_E_F",
+       "A_B_C_D_E_F_G"
+      ],
+      "total_s": 12.18,
+      "peak_memory_mb": 161.3
+     },
+     "eimer_esper_singletons": {
+      "status": "ok",
+      "cover": [
+       "A",
+       "B",
+       "C",
+       "D",
+       "E",
+       "F",
+       "G"
+      ],
+      "total_s": 27.37,
+      "peak_memory_mb": 74.0
+     }
+    }
+   },
+   "k8_n25000_b25_w1000": {
+    "pick": [
+     "A_B",
+     "A_H",
+     "B_C",
+     "C_D",
+     "D_E",
+     "E_F",
+     "F_G"
+    ],
+    "data_sha256_16": "e3482e93146888c1",
+    "matches": 91,
+    "arms": {
+     "esper_native": {
+      "status": "ok",
+      "cover": null,
+      "total_s": 22.98,
+      "peak_memory_mb": 15.2
+     },
+     "eimer_esper": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_H",
+       "B_C",
+       "C_D",
+       "D_E",
+       "E_F",
+       "F_G"
+      ],
+      "total_s": 75.18,
+      "peak_memory_mb": 129.0
+     },
+     "eimer_esper_edge": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_H",
+       "B_C",
+       "C_D_E_F_G_H"
+      ],
+      "total_s": 18.14,
+      "peak_memory_mb": 157.6
+     },
+     "eimer_esper_prefix": {
+      "status": "ok",
+      "cover": [
+       "A_B",
+       "A_B_C",
+       "A_B_C_D",
+       "A_B_C_D_E",
+       "A_B_C_D_E_F",
+       "A_B_C_D_E_F_G",
+       "A_B_C_D_E_F_G_H"
+      ],
+      "total_s": 16.16,
+      "peak_memory_mb": 202.5
+     },
+     "eimer_esper_singletons": {
+      "status": "ok",
+      "cover": [
+       "A",
+       "B",
+       "C",
+       "D",
+       "E",
+       "F",
+       "G",
+       "H"
+      ],
+      "total_s": 32.17,
+      "peak_memory_mb": 83.2
+     }
+    }
+   }
+  }
+ }
+}

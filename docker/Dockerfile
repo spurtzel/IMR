@@ -9,7 +9,7 @@
 ARG TRINO_IMAGE=trinodb/trino:481
 
 FROM ${TRINO_IMAGE} AS trino-server
-# The exact server configuration the results were produced under (single node,
+# The server configuration of the demo (single node,
 # memory catalog, spill enabled, join reordering + intra-query parallelism disabled).
 COPY docker/trino-etc/ /etc/trino/
 

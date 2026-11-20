@@ -49,6 +49,10 @@ from eimer.sql.sql_emitter import (
     _render_deferred_condition_for_edge,
     _repeat_var_consistency_predicates,
     _reluctant_predecessor_variables,
+    _prefix_prune_bounds,
+    _prefix_prune_variables,
+    _prune_predicate_sql,
+    _pruned_cache_source_sql,
     _singleton_scan_sql,
     _structural_predicates,
     _variable_aliases_in_nodes,
@@ -371,6 +375,8 @@ def _build_update_sql_parts(
     dep_graph: DependencyGraph,
     base_table: str,
     batch_table: str,
+    *,
+    prefix_prune: bool = False,
 ) -> tuple[
     Tuple[View, ...],
     Tuple[View, ...],
@@ -387,6 +393,9 @@ def _build_update_sql_parts(
     effective_sources = update_plan.effective_sources[target_view]
     last_source = update_plan.last_variable_source[target_view]
     update_mode = update_plan.update_mode_by_view.get(target_view, UpdateMode.JOIN)
+    # the batch-window prefix prune (sql_emitter): the same source restriction as the cover emitter
+    prune_bounds = _prefix_prune_bounds(dep_graph) if prefix_prune else {}
+    target_last_var = max(target_view, key=lambda var: positions[var])
 
     ordered_effective_sources = tuple(
         sorted(effective_sources, key=lambda view: view_sort_key(view, positions))
@@ -420,7 +429,7 @@ def _build_update_sql_parts(
 
     if any(_is_kleene_variable(var, dep_graph) for var in target_view):
         raise NotImplementedError(
-            "JOIN-mode updates for target views containing Kleene variables are not supported in Path A yet"
+            "JOIN-mode updates for target views containing Kleene variables are not supported"
         )
 
     source_aliases = {
@@ -432,8 +441,9 @@ def _build_update_sql_parts(
     source_blocks: list[SourceBlock] = []
     for source in ordered_effective_sources:
         alias = source_aliases[source]
+        prune = _prefix_prune_variables(source, last_source, target_last_var, prune_bounds, dep_graph)
         if source in selected_sources:
-            sql = f"{_view_table_name(source, positions)} {alias}"
+            sql = _pruned_cache_source_sql(_view_table_name(source, positions), alias, prune, batch_table)
             source_sql[source] = sql
             source_blocks.append(
                 SourceBlock(
@@ -456,7 +466,7 @@ def _build_update_sql_parts(
         variable = next(iter(source))
         if _is_kleene_variable(variable, dep_graph):
             raise NotImplementedError(
-                "Implicit singleton base scans for Kleene variables are not supported in Path A yet"
+                "Implicit singleton base scans for Kleene variables are not supported"
             )
         is_last_source = source == last_source
         table_name = batch_table if is_last_source else base_table
@@ -472,6 +482,7 @@ def _build_update_sql_parts(
             alias,
             columns_by_var,
             dep_graph.independent_conditions.get(variable, []),
+            [_prune_predicate_sql("b.ts", w, batch_table) for _var, w in prune],
         )
         source_sql[source] = sql
         source_blocks.append(
@@ -738,7 +749,7 @@ def _build_composition_op(
             continue
         if node not in strategy:
             raise NotImplementedError(
-                "Implicit singleton base scans for Kleene variables are not supported in Path A yet"
+                "Implicit singleton base scans for Kleene variables are not supported"
             )
         cte_name, _ = _kleene_dedup_cte(node, positions)
         kleene_cte_name_by_node[node] = cte_name
@@ -750,7 +761,7 @@ def _build_composition_op(
         if node in strategy:
             if len(node) > 1 and any(_is_kleene_variable(var, dep_graph) for var in node):
                 raise NotImplementedError(
-                    "Composition over multi-variable views containing Kleene variables is not supported in Path A yet"
+                    "Composition over multi-variable views containing Kleene variables is not supported"
                 )
             table_name = _view_table_name(node, positions)
             sql = f"{kleene_cte_name_by_node.get(node, table_name)} {alias}"
@@ -773,7 +784,7 @@ def _build_composition_op(
         variable = next(iter(node))
         if _is_kleene_variable(variable, dep_graph):
             raise NotImplementedError(
-                "Implicit singleton base scans for Kleene variables are not supported in Path A yet"
+                "Implicit singleton base scans for Kleene variables are not supported"
             )
         sql = _singleton_scan_sql(
             variable,
@@ -938,6 +949,7 @@ def build_evaluation_plan(
     update_plan_idx: int,
     base_table: str = "events",
     batch_table: str = "events_batch",
+    prefix_prune: bool = False,
 ) -> EvaluationPlan:
     """build an ,,EvaluationPlan'' from index-based ,,composition_plan_idx''/,,update_plan_idx'' descriptors.
 
@@ -962,6 +974,7 @@ def build_evaluation_plan(
         update_plan_idx=update_plan_idx,
         composition_cover_idx=0,
         composition_plan_idx_within_cover=composition_plan_idx,
+        prefix_prune=prefix_prune,
     )
 
 
@@ -977,8 +990,10 @@ def build_evaluation_plan_for_cover(
     update_plan_idx: int = -1,
     composition_cover_idx: int | None = None,
     composition_plan_idx_within_cover: int | None = None,
+    prefix_prune: bool = False,
 ) -> EvaluationPlan:
-    """lower a maintained strategy with an explicit composition cover.
+    """lower a maintained strategy with an explicit composition cover. ,,prefix_prune'' renders the
+    view updates with the batch-window prefix prune (the cover emitter applies it per dialect).
 
     every execution-plan path converges here: index-based descriptors via
     ,,build_evaluation_plan'' (above), and composition-variant descriptors / plan selection via
@@ -1009,6 +1024,7 @@ def build_evaluation_plan_for_cover(
             dep_graph,
             base_table,
             batch_table,
+            prefix_prune=prefix_prune,
         )
 
         update_ops.append(
@@ -1064,6 +1080,7 @@ def build_evaluation_plan_for_composition_variant(
     update_plan_idx: int,
     base_table: str = "events",
     batch_table: str = "events_batch",
+    prefix_prune: bool = False,
 ) -> EvaluationPlan:
     if update_plan_idx < 0 or update_plan_idx >= len(strategy_with_plans.update_plans):
         raise IndexError("update_plan_idx out of range")
@@ -1079,4 +1096,5 @@ def build_evaluation_plan_for_composition_variant(
         update_plan_idx=update_plan_idx,
         composition_cover_idx=composition_variant.cover_idx,
         composition_plan_idx_within_cover=composition_variant.plan_idx_within_cover,
+        prefix_prune=prefix_prune,
     )

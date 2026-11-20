@@ -1,6 +1,6 @@
 """dialect API: thin delegators to the per-dialect backend objects in
-,,backend.py''. trino is the default and only shipped dialect, so with ,,dialect=TRINO''
-every helper returns the exact byte-identical literal eimer emits.
+,,backend.py''. trino is the default dialect (with ,,dialect=TRINO'' every helper returns
+the exact byte-identical literal eimer emits); duckdb is the second dialect.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def type_name(canonical: str, dialect: SqlDialect = SqlDialect.TRINO) -> str:
 
 
 def set_diff_keyword(dialect: SqlDialect = SqlDialect.TRINO) -> str:
-    """Set-difference operator (EXCEPT on Trino)."""
+    """Set-difference operator."""
     return backend_for(dialect).set_diff_keyword()
 
 
@@ -34,7 +34,7 @@ def approx_distinct(column: str, dialect: SqlDialect = SqlDialect.TRINO) -> str:
 
 
 def relation_alias(table_expr: str, alias: str, dialect: SqlDialect = SqlDialect.TRINO) -> str:
-    """Relation/derived-table alias. Trino accepts 'AS'."""
+    """A relation or derived table with its alias."""
     return backend_for(dialect).relation_alias(table_expr, alias)
 
 
@@ -49,12 +49,12 @@ def date_diff_ms(start_ts: str, end_ts: str, dialect: SqlDialect = SqlDialect.TR
 
 
 def ordered_join_hint(sql: str, dialect: SqlDialect = SqlDialect.TRINO) -> str:
-    """Per-statement join-order pin where a dialect needs one. No-op on Trino, which
-    pins join order via the session flag (,,join_reordering_strategy='NONE''')."""
+    """The statement with its join order pinned. On Trino the order is pinned for the session
+    (,,join_reordering_strategy='NONE'''), so the statement is returned as it is."""
     return backend_for(dialect).ordered_join_hint(sql)
 
 
 def rewrite_sql(sql: str, dialect: SqlDialect = SqlDialect.TRINO) -> str:
     """Apply dialect-specific rewrites to a fully-rendered SQL string.
-    TRINO = strict no-op (byte-identical)."""
+    TRINO = strict no-op."""
     return backend_for(dialect).rewrite_sql(sql)

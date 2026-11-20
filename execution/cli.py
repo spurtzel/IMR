@@ -443,9 +443,10 @@ def _add_benchmark_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--with-correctness", action="store_true")
     parser.add_argument(
         "--target-dialect",
-        choices=("trino",),
+        choices=("trino", "duckdb"),
         default="trino",
-        help="Target SQL dialect (trino is the only shipped dialect; anything else fails loud).",
+        help="Target SQL dialect of the emitted SQL (emit-sql). The run command executes through "
+             "the Trino runner and accepts trino only.",
     )
     parser.add_argument(
         "--query-batches",
@@ -475,7 +476,7 @@ def _add_benchmark_args(parser: argparse.ArgumentParser) -> None:
         "--MR-postprocessing",
         dest="mr_postprocessing",
         action="store_true",
-        help="Run Path B (MATCH_RECOGNIZE postprocessing) in addition to Path A.",
+        help="Also run the MATCH_RECOGNIZE postprocessing variant.",
     )
     parser.add_argument("--events-table", default="events")
     parser.add_argument("--batch-table", default="events_batch")
@@ -576,6 +577,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "emit-sql":
         return _cmd_emit_sql(args)
     if args.command == "run":
+        if args.target_dialect != "trino":
+            parser.error("run executes through execution/run_benchmark.sh (Trino); use emit-sql "
+                         f"for --target-dialect {args.target_dialect}")
         return _cmd_run(args)
 
     parser.error(f"Unknown command: {args.command}")

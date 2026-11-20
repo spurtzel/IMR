@@ -17,6 +17,7 @@ from eimer.pipeline import build_from_sql
 from eimer.query.query_spec import query_spec_to_dependency_graph
 from eimer.sql.sql_render import render_expression_for_base_scan
 from eimer.plans.composition import classify_condition_type
+from eimer.sql.backend import SqlDialect, backend_for
 
 from trino_client import TrinoClient, TrinoClientError, TrinoConnectionConfig
 from query_registry import CANONICAL_QUERY_SPEC_NAME
@@ -132,7 +133,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--query-spec", default=CANONICAL_QUERY_SPEC_NAME)
     parser.add_argument("--query-spec-file", type=Path, default=None)
     # b_unified (stats-only estimator) is the DEFAULT selectivity source;
-    # c is the O(N^2) ground-truth oracle, never a selection input.
+    # c is the exact O(N^2) count, never a selection input.
     parser.add_argument("--mode", default="b_unified", choices=("c", "b_unified"))
     parser.add_argument("--events-table", default=DEFAULT_EVENTS_TABLE)
     parser.add_argument("--external-manifest-fingerprint", default=None)
@@ -343,9 +344,10 @@ def _filtered_ndv_sql(
     column: str,
     *,
     table: str = DEFAULT_EVENTS_TABLE,
+    dialect: SqlDialect = SqlDialect.TRINO,
 ) -> str:
     return _scalar_query(
-        f"approx_distinct({BASE_ALIAS}.{column})",
+        backend_for(dialect).approx_distinct(f"{BASE_ALIAS}.{column}"),
         table=table,
         where=_base_where_clause(dep_graph, variable),
     )
@@ -463,7 +465,8 @@ def _filtered_ndv(
 ) -> float:
     return _scalar_number(
         client,
-        _filtered_ndv_sql(dep_graph, variable, column, table=table),
+        _filtered_ndv_sql(dep_graph, variable, column, table=table,
+                          dialect=getattr(client, "dialect", None) or SqlDialect.TRINO),
         label=f"filtered NDV for {variable}.{column}",
     )
 
@@ -499,6 +502,26 @@ _DEP_CMP_RE = re.compile(
 )
 _INDEP_KIND = {"=": "eq", "<>": "neq", "!=": "neq", "<": "lt", "<=": "le", ">": "gt", ">=": "ge"}
 _DEP_KIND = {"<": "lt", "<=": "le", ">": "gt", ">=": "ge", "<>": "neq", "!=": "neq"}
+
+# One-sided offset inequality between two rows on ONE column: ,,<subj>.<col> OP <anchor>.<col> [+-] c''
+# (e.g. ,,B.total_amount > A.total_amount + 15''). It is the ,,offset_band'' kind with an open side:
+# ,,>''/,,>='' -> lo = c, hi = +inf; ,,<''/,,<='' -> lo = -inf, hi = c (the boundary itself has no mass for the
+# histogram estimate). The symmetric / offset BETWEEN spellings are covered by the band parsers.
+_OFFSET_CMP_RE = re.compile(
+    rf"(?is)^\s*(?P<lvar>[A-Za-z_]\w*)\s*\.\s*(?P<lcol>[A-Za-z_]\w*)\s*(?P<op><=|>=|<|>)\s*"
+    rf"(?P<rvar>[A-Za-z_]\w*)\s*\.\s*(?P<rcol>[A-Za-z_]\w*)\s*(?P<sign>[+-])\s*(?P<mag>{_FLOAT_RE})\s*$"
+)
+
+
+def parse_offset_inequality(expression: str) -> "Predicate | None":
+    """,,b.col OP a.col +/- c'' on the same column -> offset_band Predicate with one open side, else None."""
+    match = _OFFSET_CMP_RE.match(expression)
+    if match is None or match.group("lcol").lower() != match.group("rcol").lower():
+        return None
+    c = float(match.group("mag")) * (-1.0 if match.group("sign") == "-" else 1.0)
+    lo, hi = (c, float("inf")) if match.group("op") in (">", ">=") else (float("-inf"), c)
+    col = match.group("lcol")
+    return Predicate(kind="offset_band", family="B", col=col, other=col, lo_offset=lo, hi_offset=hi)
 
 # Column-agnostic abs(date_diff('unit', X, Y)) <= value, the column NAMES do not affect the
 # window width, so (unlike the shared {time,ts}-restricted regexes) this works on any schema.
@@ -576,9 +599,14 @@ def _adapt_dependent_predicate(text: str) -> "Predicate | None":
     classification = classify_condition_type(text)
     if classification == ConditionType.EQUALITY:
         parsed = parse_qualified_column_equality(text)
-        if parsed is None:
+        if parsed is not None:
+            return Predicate(kind="eq", family="B", col=parsed.left_col, other=parsed.right_col)
+        # Equality across two DIFFERENT columns (,,B.pu_location_id = A.do_location_id''): family-B eq with
+        # col != other; mode_b_enriched prices it from the two frequency sketches.
+        cross = _QUALIFIED_EQ_RE.match(text)
+        if cross is None:
             return None
-        return Predicate(kind="eq", family="B", col=parsed.left_col, other=parsed.right_col)
+        return Predicate(kind="eq", family="B", col=cross.group("left_col"), other=cross.group("right_col"))
     if classification == ConditionType.RANGE_SPATIAL:
         band = parse_spatial_between(text)
         if band is not None:
@@ -597,7 +625,7 @@ def _adapt_dependent_predicate(text: str) -> "Predicate | None":
     # parseable window: cross-column inequality.
     match = _DEP_CMP_RE.match(text)
     if match is None:
-        return None
+        return parse_offset_inequality(text)
     kind = _DEP_KIND.get(match.group("op"))
     if kind is None:
         return None

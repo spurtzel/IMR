@@ -58,7 +58,7 @@ Predicate = TypeEquals | ColumnThreshold
 
 # ---------------------------------------------------------------------------
 # Edges (dependent conditions); anchor = the variable whose columns appear on
-# the right-hand side of BETWEEN (A in "B.lon BETWEEN A.lon - w AND A.lon + w").
+# the right-hand side of BETWEEN (A in ,,B.lon BETWEEN A.lon - w AND A.lon + w'').
 
 
 @dataclass(frozen=True)
@@ -344,13 +344,7 @@ def verify_edge(frame: pd.DataFrame, edge: Edge) -> EdgeReport:
 
 
 def _per_row_counts(frame: pd.DataFrame, edge: Edge, *, role: str) -> tuple[np.ndarray, np.ndarray, int]:
-    """Partner counts per row of the given endpoint ('anchor' or 'subject').
-
-    Subject-side counts swap the endpoint roles; for spatial bands the swapped
-    bounds differ from the SQL's anchor-derived bounds by at most 1-ulp
-    boundary events: acceptable for the path-2 dependence report (not used by
-    the bit-for-bit edge gate).
-    """
+    """Partner counts per row of the given endpoint ('anchor' or 'subject')."""
     if role == "anchor":
         _, per_anchor, anchor_mask, subject_mask, _ = _count_edge(frame, edge)
         return per_anchor, anchor_mask, int(subject_mask.sum())

@@ -1,5 +1,5 @@
-"""Backend implementations: the Trino backend subpackage.
+"""Backend implementations, one subpackage per engine: ,,trino'' and ,,duckdb'' hold the
+dialect subclasses, ,,esper'' renders a selected plan as an EPL module.
 
-,,backends/trino/'' is the shipped backend; the interface (,,SqlBackend'', the
-,,backend_for'' registry) lives in ,,eimer.sql.backend''.
+The interface (,,SqlBackend'', the ,,backend_for'' registry) lives in ,,eimer.sql.backend''.
 """

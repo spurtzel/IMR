@@ -15,12 +15,11 @@ from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.pyplot as plt
 
-# Okabe-Ito colorblind-safe pair; identity also carried by marker shape.
-C_MR = "#E69F00"       # orange, circle
-C_CG = "#0072B2"       # blue, square
-PANELS = [  # (axis key, x param, x label template, log-x?)
+C_MR = "#E69F00"
+C_CG = "#0072B2"
+PANELS = [
     ("pattern_length", "k", "pattern length $k$", False),
     ("table_size", "n", "table size $N$ (rows)", False),
     ("batches", "batches", "number of batches $B$  ($N{{=}}{n}$)", False),
@@ -56,14 +55,12 @@ def main() -> int:
                     xs.append(x)
                     ys.append(rec["total_ms"])
                 elif rec["status"] == "dnf":
-                    # measured lower bound at the wall: open marker + annotation
                     ax.plot([x], [wall_ms], marker=marker, ms=8, mfc="none",
                             mec=color, mew=1.8, ls="none", zorder=4)
                     ax.annotate("DNF", (x, wall_ms), textcoords="offset points",
                                 xytext=(0, 7), ha="center", fontsize=8, color="#444444")
             ax.plot(xs, ys, marker=marker, ms=7, color=color, lw=2,
                     mec="white", mew=0.8, label=label, zorder=3)
-        # per-cell speedup where both arms finished
         for x, mr, cg in cells:
             if (mr["status"] == "ok" and cg["status"] == "ok" and cg["total_ms"]
                     and mr["total_ms"] / cg["total_ms"] >= 3):

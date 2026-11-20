@@ -14,5 +14,4 @@ in, one validated, materialized, executed, recorded experiment out.
                    collect (experiment_manifest.json + candidate_rows.csv).
 
 Unsupported capture combinations are rejected loudly.
-Tests: tests/test_config_runner.py.
 """

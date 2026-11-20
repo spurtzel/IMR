@@ -1,1 +1,1 @@
-"""workload.data: the production data generator."""
+"""workload.data: the data generator."""

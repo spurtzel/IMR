@@ -19,7 +19,7 @@ from eimer.workload import ConstantSelectivity, DependentSelectivity, WindowSele
 INEQ_ORDERING_FACTOR = 0.5
 
 # plan-invariant price for the singleton MR_GROUP_DETECT (Kleene group-detect) op: every cover
-# forces K into the same singleton view, so a constant cannot mis-rank within a query; deliberately 0.
+# forces K into the same singleton view, so a constant cannot mis-rank within a query, so it is 0.
 KLEENE_MR_GROUP_DETECT_CONST = 0
 
 
@@ -380,8 +380,6 @@ def _batch_filtered_cache_size(source_size: int, workload: Workload, batch_index
 
 def update_op_cost(op: UpdateOp, workload: Workload, batch_index: int, state: StateLevelTape) -> OpCost:
     if op.update_mode == UpdateMode.MR_GROUP_DETECT:
-        # a kleene group-detect op is a singleton {K} view with EMPTY source_blocks; the generic
-        # path below would KeyError on output_factors[source]. price it as a logical-size-n_K singleton.
         # state.set is ABSOLUTE (not +=) because _analytic_singleton_size is already cumulative (n_at).
         if len(op.target_view) != 1:
             raise CostModelError(f"MR_GROUP_DETECT op must target a singleton view for {op.op_id}")

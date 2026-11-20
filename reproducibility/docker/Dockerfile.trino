@@ -1,0 +1,14 @@
+# Trino server of the Trino experiments.
+#
+#   docker build -t eimer-trino -f reproducibility/docker/Dockerfile.trino .
+#
+# Trino 479 (the version of the paper's runs) with an Iceberg catalog, whose tables live on the container's local file
+# system, and an in-memory catalog. Build arguments:
+#   TRINO_HEAP_GB=8    JVM heap of the server in GB; the per-query memory limit is the heap minus 2 GB
+ARG TRINO_IMAGE=docker.io/trinodb/trino:479
+FROM ${TRINO_IMAGE}
+ARG TRINO_HEAP_GB=8
+COPY --chown=trino:trino reproducibility/docker/trino-iceberg-etc/ /etc/trino/
+RUN sed -i "s/@HEAP@/${TRINO_HEAP_GB}/" /etc/trino/jvm.config \
+ && sed -i "s/@QUERY_MEM@/$((TRINO_HEAP_GB - 2))/" /etc/trino/config.properties \
+ && mkdir -p /data/trino/iceberg /tmp/trino-spill

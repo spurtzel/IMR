@@ -35,6 +35,7 @@ class Workload:
     rho: float
     dependency_graph: DependencyGraph
     selectivities: Selectivities
+    window_rule: str = "pairwise"
 
     def __post_init__(self) -> None:
         if any(not isinstance(size, int) or size <= 0 for size in self.batch_sizes):
@@ -94,6 +95,7 @@ def make_workload(
     initial_base_size: int = 0,
     selectivities: Selectivities,
     rho: float = 1000.0,
+    window_rule: str = "pairwise",
 ) -> Workload:
     """a workload is its sequence of batch sizes s=[s1,...,sB]; table size N is derived:
     N = initial_base_size + sum(s); window after batch t = initial_base_size + sum(s[:t]) (== Workload.n_at(t)).
@@ -124,4 +126,5 @@ def make_workload(
         rho=rho,
         dependency_graph=dep_graph,
         selectivities=selectivities,
+        window_rule=window_rule,
     )

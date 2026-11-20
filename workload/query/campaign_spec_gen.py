@@ -1,7 +1,6 @@
 """Parametric MATCH_RECOGNIZE query-spec generator.
 
-Emits overnight_suite-format specs for any pattern length n, topology shape, and band
-tightness.
+Emits specs for any pattern length n, topology shape, and band tightness.
 
 CLI: ,,python3 workload/query/campaign_spec_gen.py --emit-n5-probe''  -> q5_{chain,star,cycle}.
 """
@@ -40,7 +39,7 @@ def _diamond_err(n):
 def edge_classes(n, shape, predicate_classes="band"):
     """Per-edge dependent-predicate class list. 'band' (default) / 'equi' uniform;
     'mixed' = DETERMINISTIC alternation by edge index (band, equi, band, ...), never
-    random (a random per-edge mix makes single cells structurally high-variance)."""
+    random."""
     es = edges(n, shape)
     if predicate_classes == "mixed":
         return ["band" if i % 2 == 0 else "equi" for i in range(len(es))]

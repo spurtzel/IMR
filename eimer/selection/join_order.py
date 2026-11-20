@@ -33,27 +33,37 @@ def _sigma_value(components, workload: Workload, batch_index: int) -> float:
     return out
 
 
-def _edge_sigma(workload: Workload, batch_index: int, a: str, b: str) -> float:
-    """selectivity of the value edge between variables a and b; 1.0 if the pair carries no edge."""
+def _edge_sigma(workload: Workload, batch_index: int, a: str, b: str, *, windows: bool = True) -> float:
+    """selectivity of the value edge between variables a and b; 1.0 if the pair carries no edge.
+    ,,windows=False'' skips the edge's window components (constants only)."""
     positions = workload.dependency_graph.positions
     key = (a, b) if positions[a] < positions[b] else (b, a)
     components = workload.selectivities.dependent.get(key)
     if components is None:
         return 1.0
+    if not windows:
+        components = tuple(c for c in components if isinstance(c, ConstantSelectivity))
     return _sigma_value(components, workload, batch_index)
+
+
+WINDOW_RULES = ("pairwise", "chain")
 
 
 def analytic_node_size(view: View, workload: Workload, batch_index: int) -> float:
     """analytic view cardinality: product of sigma-filtered singletons x internal edge sigmas x the
     1/k! pattern-ordering factor."""
+    rule = getattr(workload, "window_rule", "pairwise")
+    if rule not in WINDOW_RULES:
+        raise ValueError(f"unknown window_rule {rule!r}; expected one of {WINDOW_RULES}")
     h = float(workload.n_at(batch_index))
     size = 1.0
     variables = sorted(view, key=lambda v: workload.dependency_graph.positions[v])
     for var in variables:
         size *= h * workload.selectivities.independent.get(var, 1.0)
     for i, a in enumerate(variables):
-        for b in variables[i + 1:]:
-            size *= _edge_sigma(workload, batch_index, a, b)
+        for j, b in enumerate(variables[i + 1:], start=i + 1):
+            windows = rule == "pairwise" or j == i + 1
+            size *= _edge_sigma(workload, batch_index, a, b, windows=windows)
     size /= factorial(len(variables))
     return max(size, 0.0)
 
@@ -267,12 +277,10 @@ def best_bushy_tree(
     *,
     ij_over_fp: float = _IJ_OVER_FP,
 ) -> Tuple[BushyTree, float]:
-    """exact subset-DP over compose join trees (DPsub with cross products). unlike the left-deep DP,
-    splits are not restricted to edge-connected extensions, so a cross join of two tiny collapsed
-    subresults (the two-island win) is available and the per-step cost polices expensive crosses.
-    O(3^n) subsets x splits; compose node counts are <= ~7. per-subset cardinality via ,,_subset_card''
-    (plan-independent), each split's cost via ,,_split_cost''; subsets ascend by size, tie-break is
-    (cost, canonical partition key)."""
+    """exact subset-DP over compose join trees (DPsub with cross products).
+    O(3^n) subsets x splits. per-subset cardinality via ,,_subset_card'' (plan-independent), each
+    split's cost via ,,_split_cost''; subsets ascend by size, tie-break is (cost, canonical partition
+    key)."""
     from itertools import combinations
     positions = workload.dependency_graph.positions
     nodes: List[View] = sorted(join_graph.nodes, key=lambda v: view_sort_key(v, positions))
@@ -364,7 +372,7 @@ def tree_rank_cost(tree: BushyTree, workload: Workload, batch_index: int) -> flo
 
 
 def to_join_tree_node(tree: BushyTree):
-    """convert the DP's BushyTree into the production models.JoinTreeNode carried on
+    """convert the DP's BushyTree into the models.JoinTreeNode carried on
     CompositionPlan.join_tree (same leaf/inner shape)."""
     from eimer.models import JoinTreeNode
     if tree.node is not None:

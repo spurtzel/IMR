@@ -421,6 +421,10 @@ def render_benchmark_sql(
 ) -> str:
     if not strategies:
         raise ValueError("At least one strategy must be selected")
+    if include_correctness_checks and not backend_for(dialect).supports_native_match_recognize:
+        raise ValueError(
+            f"dialect {dialect.value!r} has no native MATCH_RECOGNIZE: the in-script correctness "
+            "baseline cannot be generated; verify the result against an engine that has one")
     validate_workload_profile(workload_profile)
     query_spec = query_spec or canonical_query_spec(config)
     result_key_columns = query_spec_result_key_columns(query_spec)
@@ -486,7 +490,7 @@ def render_benchmark_sql(
         # Invalidate any external-load marker: a stale generated_events_meta would let a later external run skip its load and benchmark the wrong dataset.
         lines.append(f"DROP TABLE IF EXISTS {generated_events_table}_meta;")
     lines.append("")
-    # ,,rows'' is a reserved word in some SQL dialects but a legal Trino column name -> the backend decides quoting.
+    # the backend names the ,,rows'' column
     rows_col = backend_for(dialect).rows_column_name()
     lines.append(
         f"CREATE TABLE {results_table} (\n"
@@ -516,11 +520,11 @@ def render_benchmark_sql(
         # Table is preloaded by execution/load_external_events.py; fail fast if it does not match the manifest so a stale table cannot silently benchmark the wrong dataset.
         # (The comment format must not match the runner's ,,-- Batch <digits>'' / ,,-- Strategy <token>'' context markers.)
         lines.append(f"-- EXTERNAL_EVENTS manifest_fingerprint={external_events_fingerprint}")
+        guard = backend_for(dialect).fail_int_expr(
+            f"{generated_events_table} does not match external manifest "
+            f"{external_events_fingerprint} with {total_events} rows; rerun load_external_events.py")
         lines.append(
-            "SELECT IF(count(*) = 1, 1, CAST(fail("
-            f"'{generated_events_table} does not match external manifest "
-            f"{external_events_fingerprint} with {total_events} rows; rerun load_external_events.py'"
-            ") AS INTEGER))\n"
+            f"SELECT IF(count(*) = 1, 1, {guard})\n"
             f"FROM {generated_events_table}_meta\n"
             f"WHERE manifest_fingerprint = '{external_events_fingerprint}' AND total_rows = {total_events}\n"
             f"  AND total_rows = (SELECT count(*) FROM {generated_events_table});"
@@ -559,7 +563,7 @@ def render_benchmark_sql(
 
         for batch in range(1, len(batch_sizes) + 1):
             start, end = _batch_range(batch_sizes, batch)
-            # Standard "-- Batch <k>" marker so run_benchmark.sh tracks baseline precompute under the right batch number.
+            # Standard ,,-- Batch <k>'' marker so run_benchmark.sh tracks baseline precompute under the right batch number.
             lines.append(f"-- Batch {batch} (baseline load)")
             lines.append(
                 f"INSERT INTO {baseline_events_table} SELECT * FROM {generated_events_table} "
@@ -647,7 +651,7 @@ def render_benchmark_sql(
                     strip_trailing_semicolon(update_sql),
                     watermark_table,
                 )
-                if pin_join_order:  # per-statement join-order pin where the dialect needs one (no-op on Trino)
+                if pin_join_order:
                     rendered = ordered_join_hint(rendered, dialect)
                 if cost_model_validation:
                     rendered = prepend_op_id_marker(rendered, strategy.cache_statement_op_ids[idx])

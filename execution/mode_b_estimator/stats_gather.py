@@ -1,4 +1,4 @@
-"""One-pass per-column summary-stat gatherer for the mode_b_v2 estimator.
+"""One-pass per-column summary-stat gatherer for the mode_b_analytic estimator.
 
 Builds the single ,,SELECT'' that materializes four numbers per column
 (,,low, high, ndv, nulls_fraction'') plus the table ,,row_count'', and parses
@@ -17,6 +17,7 @@ from math import nan
 from typing import Dict, List, Sequence
 
 from .contract import ColumnStats, TableStats
+from eimer.sql.backend import SqlDialect, backend_for
 
 # Columns whose stored type is TIMESTAMP(6); they must be projected through a
 # numeric cast so low/high are doubles comparable to second-valued literals.
@@ -35,7 +36,8 @@ def _safe_alias(prefix: str, column: str) -> str:
     return f"{prefix}__{sanitized}"
 
 
-def _numeric_expr(column: str, timestamp_columns=_TIMESTAMP_COLUMNS) -> str:
+def _numeric_expr(column: str, timestamp_columns=_TIMESTAMP_COLUMNS,
+                  dialect: SqlDialect = SqlDialect.TRINO) -> str:
     """SQL expression projecting ,,column'' into a numeric (double) domain.
 
     Timestamp columns go through ,,to_unixtime'' (seconds-since-epoch double);
@@ -44,11 +46,12 @@ def _numeric_expr(column: str, timestamp_columns=_TIMESTAMP_COLUMNS) -> str:
     data-driven timestamp set so arbitrarily-named TIMESTAMP columns still cast.
     """
     if column in timestamp_columns:
-        return f"to_unixtime({column})"
+        return backend_for(dialect).unix_seconds(column)
     return column
 
 
-def build_stats_sql(columns: Sequence[str], table: str, *, timestamp_columns=_TIMESTAMP_COLUMNS) -> str:
+def build_stats_sql(columns: Sequence[str], table: str, *, timestamp_columns=_TIMESTAMP_COLUMNS,
+                    dialect: SqlDialect = SqlDialect.TRINO) -> str:
     """Single SELECT computing min/max/approx_distinct/null-fraction per column.
 
     Result is one row: ,,row_count'' (count(*)), ,,min__<col>''/,,max__<col>''
@@ -60,12 +63,13 @@ def build_stats_sql(columns: Sequence[str], table: str, *, timestamp_columns=_TI
     if not ordered:
         raise ValueError("build_stats_sql requires at least one column")
 
+    backend = backend_for(dialect)
     select_items: List[str] = [f"count(*) AS {ROW_COUNT_ALIAS}"]
     for column in ordered:
-        numeric = _numeric_expr(column, timestamp_columns)
+        numeric = _numeric_expr(column, timestamp_columns, dialect)
         select_items.append(f"min({numeric}) AS {_safe_alias('min', column)}")
         select_items.append(f"max({numeric}) AS {_safe_alias('max', column)}")
-        select_items.append(f"approx_distinct({column}) AS {_safe_alias('ndv', column)}")
+        select_items.append(f"{backend.approx_distinct(column)} AS {_safe_alias('ndv', column)}")
         select_items.append(
             f"(count(*) - count({column})) * 1.0 / count(*) AS {_safe_alias('nf', column)}"
         )
@@ -97,11 +101,13 @@ def gather(columns: Sequence[str], client, table: str, *, timestamp_columns=_TIM
     """Run ,,build_stats_sql'' and parse its single row into ,,TableStats''.
 
     ,,client'' must expose ,,execute(sql) -> (column_names, rows)'' like
-    execution/trino_client.TrinoClient. min/max/ndv are cast to float (NaN when
-    NULL); ,,timestamp_columns'' selects which columns get the to_unixtime cast.
+    execution/trino_client.TrinoClient (and may carry a ,,dialect''; default TRINO).
+    min/max/ndv are cast to float (NaN when NULL); ,,timestamp_columns'' selects which
+    columns get the seconds cast.
     """
     ordered = list(dict.fromkeys(columns))
-    sql = build_stats_sql(ordered, table, timestamp_columns=timestamp_columns)
+    sql = build_stats_sql(ordered, table, timestamp_columns=timestamp_columns,
+                          dialect=client_dialect(client))
     result_columns, rows = client.execute(sql)
     mapping = _row_to_mapping(result_columns, rows)
 
@@ -121,6 +127,11 @@ def gather(columns: Sequence[str], client, table: str, *, timestamp_columns=_TIM
         column_stats[column] = ColumnStats(low=low, high=high, ndv=ndv, nulls_fraction=nf)
 
     return TableStats(row_count=row_count, columns=column_stats)
+
+
+def client_dialect(client) -> SqlDialect:
+    """the dialect a client executes (its ,,dialect'' attribute); TRINO when it has none."""
+    return getattr(client, "dialect", None) or SqlDialect.TRINO
 
 
 # Offline check (no Trino access): run this module directly.

@@ -196,7 +196,7 @@ class ExperimentConfig:
 
 @dataclass(frozen=True)
 class ParallelismConfig:
-    mode: str = "serial"     # serial (the only supported mode)
+    mode: str = "serial"     # the only supported mode
     containers: int = 1
 
     @classmethod
@@ -240,8 +240,7 @@ def load_config_dict(path: Path) -> dict:
             import yaml
         except ImportError as exc:
             raise ConfigError(
-                f"{path}: YAML configs need PyYAML, which is not installed (and not yet a "
-                "pinned project dependency: a Stage-1 review item). Install it, or use "
+                f"{path}: YAML configs need PyYAML, which is not installed. Install it, or use "
                 "the JSON form of the same structure.") from exc
         data = yaml.safe_load(text)
     else:

@@ -2,9 +2,7 @@
 
 Loads into a staging table via chunked INSERT ... VALUES (statements are
 character-budgeted: Trino's query.max-length defaults to 1,000,000 chars),
-then finalizes with a single CTAS so the benchmark table has one snapshot and
-engine-sized files (hundreds of small INSERT files would confound scan costs
-vs the CTAS-built corpus). Idempotent: a matching fingerprint in
+then finalizes with a single CTAS. Idempotent: a matching fingerprint in
 generated_events_meta skips the load unless --force.
 
 Literal fidelity: timestamps as TIMESTAMP '... .ffffff' (microseconds), floats

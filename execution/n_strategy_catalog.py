@@ -152,9 +152,9 @@ def build_curated_strategy_index(
     max_strategies: int = 40,
     max_views_per_strategy: int | None = None,
 ):
-    """Like ``build_eimer_strategy_index`` but attaches composition plans to a bounded, curated
-    subset of strategies (``_curate_strategy_subset``), the tractable path at n=4. Returns
-    ``(dep_graph, {N<i>: strategy_with_plans})`` like ``build_eimer_strategy_index``."""
+    """Like ,,build_eimer_strategy_index'' but attaches composition plans to a bounded, curated
+    subset of strategies (,,_curate_strategy_subset''), the tractable path at n=4. Returns
+    ,,(dep_graph, {N<i>: strategy_with_plans})'' like ,,build_eimer_strategy_index''."""
     # max_views bounds the per-strategy composition-variant blow-up (2^views covers). Default 4
     # keeps the fully-deferred 4-singleton endpoint; override via EIMER_CURATED_MAX_VIEWS.
     if max_views_per_strategy is None:

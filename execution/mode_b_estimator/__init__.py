@@ -1,18 +1,18 @@
-"""Unified mode_b selectivity estimator: the production entry point for the stats-only
+"""Unified mode_b selectivity estimator: the entry point for the stats-only
 estimators, used by the selectivity producer (,,compute_selectivities.py'', ,,b_unified'' mode).
 
 It wraps:
-  * ,,mode_b_v2'': the analytic Trino-CBO port (profiles 'trino' and 'eimer'). Needs only
+  * ,,mode_b_analytic'': the analytic Trino-CBO port (profiles 'trino' and 'eimer'). Needs only
     {low, high, ndv, nf}.
-  * ,,mode_b_v3'': the enriched estimator (profile 'eimer_plus') that uses an equi-depth
-    histogram / top-K frequency sketch where present and delegates to v2 'eimer' otherwise.
+  * ,,mode_b_enriched'': the enriched estimator (profile 'eimer_plus') that uses an equi-depth
+    histogram / top-K frequency sketch where present and delegates to the analytic 'eimer' profile otherwise.
 plus the ,,contract.Predicate'' / ,,ColumnStats'' / ,,TableStats'' types and the stats gatherers.
 
 Profiles (passed to ,,estimate''):
-  'eimer'      -> v2 analytic (always available; coarse stats only).
-  'eimer_plus' -> v3 enriched (falls back to v2 'eimer' per-operator when a column lacks
+  'eimer'      -> analytic (always available; coarse stats only).
+  'eimer_plus' -> enriched (falls back to the analytic 'eimer' per-operator when a column lacks
                   the enriched stat).
-  'trino'      -> v2 faithful-Trino port (for comparison; not a EIMER default).
+  'trino'      -> analytic, faithful-Trino port (for comparison; not EIMER's default).
   'auto'       -> 'eimer_plus' iff any gathered column carries a freq/hist sketch, else 'eimer'.
 
 This package deliberately does NOT import ,,compute_selectivities'', so the producer can
@@ -28,7 +28,7 @@ _REPO_ROOT = str(Path(__file__).resolve().parents[2])
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from . import mode_b_v2, mode_b_v3, stats_gather, stats_gather_plus
+from . import mode_b_analytic, mode_b_enriched, stats_gather, stats_gather_plus
 from .contract import (  # re-exported: the stable type surface
     ColumnStats,
     Frequencies,
@@ -61,34 +61,35 @@ def resolve_profile(profile: str, stats: TableStats) -> str:
 def estimate(pred: Predicate, stats: TableStats, *, profile: str = "auto") -> float:
     """Unified [0,1]-clamped selectivity for one predicate.
 
-    Routes to the enriched estimator (v3) for 'eimer_plus', else the analytic estimator
-    (v2) for 'eimer'/'trino'. 'auto' picks 'eimer_plus' when enriched stats are present.
+    Routes to the enriched estimator for 'eimer_plus', else the analytic estimator
+    for 'eimer'/'trino'. 'auto' picks 'eimer_plus' when enriched stats are present.
     NaN is preserved (the producer treats it as 'unknown').
     """
     if profile not in PROFILES:
         raise ValueError(f"unknown profile {profile!r}; expected one of {PROFILES}")
     resolved = resolve_profile(profile, stats)
     if resolved == "eimer_plus":
-        return mode_b_v3.estimate(pred, stats, profile="eimer_plus")
-    return mode_b_v2.estimate(pred, stats, profile=resolved)
+        return mode_b_enriched.estimate(pred, stats, profile="eimer_plus")
+    return mode_b_analytic.estimate(pred, stats, profile=resolved)
 
 
-# Trino type prefixes -> column class (lower-cased SHOW COLUMNS 'Type' string).
+# SQL type prefixes -> column class (lower-cased type string of the backend's column listing;
+# identical spellings on Trino and DuckDB).
 _TIMESTAMP_TYPE_PREFIXES = ("timestamp",)           # to_unixtime cast (seconds domain)
 _STRING_TYPE_PREFIXES = ("varchar", "char")          # categorical -> frequency sketch
 _NUMERIC_TYPE_PREFIXES = ("bigint", "integer", "smallint", "tinyint", "double", "real", "decimal")
+_BOOLEAN_TYPE_PREFIXES = ("boolean",)               # a flag: frequency sketch when it is an equality target
 
 
-def classify_column_types(client, table: str, columns=None):
-    """Data-driven column classification via ,,SHOW COLUMNS FROM <table>''.
+def _column_types(client, table: str) -> dict:
+    """{column: lower-cased type} from the backend's column listing (Trino: ,,SHOW COLUMNS FROM <table>'',
+    DuckDB: ,,DESCRIBE <table>''; (name, type) in the first two result columns)."""
+    from eimer.sql.backend import backend_for
+    _cols, rows = client.execute(backend_for(stats_gather.client_dialect(client)).column_types_sql(table))
+    return {str(r[0]): str(r[1]).strip().lower() for r in rows}
 
-    Returns (string_cols, numeric_cols, timestamp_cols) as sets. Restricted to ,,columns''
-    when given, else covers every column (used to discover the table's timestamp columns
-    for schema-agnostic ordering detection). Works on any schema; unrecognized types fall
-    into none of the sets (base stats only). ,,client.execute(sql) -> (col_names, rows)''.
-    """
-    _cols, rows = client.execute(f"SHOW COLUMNS FROM {table}")
-    types = {str(r[0]): str(r[1]).strip().lower() for r in rows}
+
+def _classify(types: dict, columns=None):
     want = set(types) if columns is None else set(columns)
     string_cols, numeric_cols, timestamp_cols = set(), set(), set()
     for col in want:
@@ -102,26 +103,40 @@ def classify_column_types(client, table: str, columns=None):
     return string_cols, numeric_cols, timestamp_cols
 
 
+def classify_column_types(client, table: str, columns=None):
+    """Data-driven column classification via the backend's column listing.
+
+    Returns (string_cols, numeric_cols, timestamp_cols) as sets. Restricted to ,,columns''
+    when given, else covers every column (used to discover the table's timestamp columns
+    for schema-agnostic ordering detection). Works on any schema; unrecognized types (among
+    them boolean) fall into none of the sets. ,,client.execute(sql) -> (col_names, rows)''.
+    """
+    return _classify(_column_types(client, table), columns)
+
+
 def gather_stats(columns, client, table: str, *, enriched: bool = False,
                  eq_columns=(), hist_columns=()) -> TableStats:
     """Gather the per-column summary stats the estimator consumes, as a ,,TableStats''.
 
     enriched=False: coarse {low, high, ndv, nulls_fraction} via one aggregate SELECT.
 
-    enriched=True: additionally gather the top-K frequency sketch for string equality
-    columns and the equi-depth histogram for numeric/timestamp range columns, so the
+    enriched=True: additionally gather the top-K frequency sketch for equality columns
+    (string, numeric and boolean: categorical ids are often stored as numbers, flags as
+    booleans) and the equi-depth histogram for numeric/timestamp range columns, so the
     'eimer_plus' estimator uses the skew-aware (collision) and clustered (convolution)
-    forms. Column classes are derived from Trino types (,,classify_column_types''), so this
-    works on any schema. ,,eq_columns''/,,hist_columns'' are the predicate roles; the type
-    intersection keeps freq to categoricals and hist to numerics.
+    forms. Column classes are derived from the engine's types, so this works on any schema.
+    ,,eq_columns''/,,hist_columns'' are the predicate roles; the type intersection keeps
+    freq to the sketchable types and hist to numerics.
     ,,client.execute(sql) -> (col_names, rows)''.
     """
     columns = list(dict.fromkeys(columns))
     if not enriched:
         return stats_gather.gather(columns, client, table)
-    string_cols, numeric_cols, timestamp_cols = classify_column_types(client, table, columns)
+    types = _column_types(client, table)
+    string_cols, numeric_cols, timestamp_cols = _classify(types, columns)
+    boolean_cols = {c for c in columns if types.get(c, "").startswith(_BOOLEAN_TYPE_PREFIXES)}
     eq_set, hist_set = set(eq_columns), set(hist_columns)
-    freq = [c for c in columns if c in eq_set and c in string_cols]
+    freq = [c for c in columns if c in eq_set and (c in string_cols or c in numeric_cols or c in boolean_cols)]
     hist = [c for c in columns if c in hist_set and (c in numeric_cols or c in timestamp_cols)]
     return stats_gather_plus.gather_plus(
         columns, client, table,
@@ -139,32 +154,32 @@ def _selftest() -> None:
     def approx(a, b, tol=1e-12):
         return (isnan(a) and isnan(b)) or abs(a - b) <= tol
 
-    # Coarse stats only -> 'auto' must resolve to 'eimer' and match v2 'eimer' exactly.
+    # Coarse stats only -> 'auto' must resolve to 'eimer' and match the analytic 'eimer' exactly.
     coarse = TableStats(row_count=1000, columns={
         "id": ColumnStats(0.0, 8000.0, 8000.0, 0.0),
         "etype": ColumnStats(float("nan"), float("nan"), 4.0, 0.0),
     })
     assert resolve_profile("auto", coarse) == "eimer", "auto must be eimer on coarse stats"
 
-    # Family-A eq routes and matches v2 directly.
+    # Family-A eq routes and matches the analytic estimator directly.
     pa = Predicate(kind="eq", family="A", col="etype", literal="R")
     assert approx(estimate(pa, coarse, profile="eimer"),
-                  mode_b_v2.estimate(pa, coarse, profile="eimer"))
+                  mode_b_analytic.estimate(pa, coarse, profile="eimer"))
     assert approx(estimate(pa, coarse, profile="auto"),
-                  mode_b_v2.estimate(pa, coarse, profile="eimer")), "auto==eimer on coarse"
+                  mode_b_analytic.estimate(pa, coarse, profile="eimer")), "auto==eimer on coarse"
 
     # Family-B offset band routes to the analytic on coarse stats.
     pb = Predicate(kind="offset_band", family="B", col="id", other="id",
                    lo_offset=0.0, hi_offset=500.0)
     got = estimate(pb, coarse, profile="eimer")
-    want = mode_b_v2.estimate(pb, coarse, profile="eimer")
+    want = mode_b_analytic.estimate(pb, coarse, profile="eimer")
     assert approx(got, want) and not isnan(got), (got, want)
 
     # trino profile is selectable and is 'unknown' (NaN) for the offset band.
     assert isnan(estimate(pb, coarse, profile="trino"))
 
     # With an enriched (hist) column present, 'auto' resolves to 'eimer_plus' and routes
-    # to v3 (which here matches the analytic on a uniform histogram).
+    # to the enriched estimator (which here matches the analytic on a uniform histogram).
     uhist = Histogram(edges=tuple(i * 80.0 for i in range(101)),
                       probs=tuple(i / 100 for i in range(101)))
     enriched = TableStats(row_count=1000, columns={
@@ -174,7 +189,7 @@ def _selftest() -> None:
     pbe = Predicate(kind="offset_band", family="B", col="id", other="id",
                     lo_offset=0.0, hi_offset=2000.0)
     got_e = estimate(pbe, enriched, profile="auto")
-    want_e = mode_b_v3.estimate(pbe, enriched, profile="eimer_plus")
+    want_e = mode_b_enriched.estimate(pbe, enriched, profile="eimer_plus")
     assert approx(got_e, want_e), (got_e, want_e)
 
     # gather_stats parses a single mocked aggregate row into a TableStats (no network).

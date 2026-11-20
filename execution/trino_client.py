@@ -7,6 +7,8 @@ from dataclasses import dataclass
 
 import bootstrap  # noqa: F401
 
+from eimer.sql.backend import SqlDialect
+
 
 class TrinoClientError(RuntimeError):
     pass
@@ -45,6 +47,8 @@ class TrinoConnectionConfig:
 
 
 class TrinoClient:
+    dialect = SqlDialect.TRINO   # the SQL the client executes (read by the statistics gatherers)
+
     def __init__(self, config: TrinoConnectionConfig) -> None:
         self.config = config
         if config.server.startswith("http://") or config.server.startswith("https://"):
@@ -153,6 +157,8 @@ class TrinoClient:
                 columns = self._extract_columns(payload)
             rows.extend(self._extract_rows(payload))
 
+        # the statement's own statistics as reported with its final response (e.g. peakMemoryBytes, cpuTimeMillis)
+        self.last_stats = payload.get("stats") if isinstance(payload.get("stats"), dict) else None
         return columns, rows
 
 

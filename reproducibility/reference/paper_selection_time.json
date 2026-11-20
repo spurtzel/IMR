@@ -1,0 +1,225 @@
+{
+ "note": "Selection times of the paper's run (Section 7.3), in seconds: median of five runs per query (complete_k6: one run, as it exceeded the limit of 300 s; clique-grow was not run on larger complete queries). Workload: N = 100,000 rows in 25 batches, every batch queried, type rate 0.05, selectivity 0.01. Server: Intel Xeon Silver 4314, single core.",
+ "queries": {
+  "chain_k3": {
+   "clique_grow_s": 0.0024,
+   "edge_cover_s": 0.0014,
+   "clique_grow_runs": 5
+  },
+  "chain_k4": {
+   "clique_grow_s": 0.0044,
+   "edge_cover_s": 0.0022,
+   "clique_grow_runs": 5
+  },
+  "chain_k5": {
+   "clique_grow_s": 0.0088,
+   "edge_cover_s": 0.0032,
+   "clique_grow_runs": 5
+  },
+  "chain_k6": {
+   "clique_grow_s": 0.0192,
+   "edge_cover_s": 0.0045,
+   "clique_grow_runs": 5
+  },
+  "chain_k7": {
+   "clique_grow_s": 0.0494,
+   "edge_cover_s": 0.0074,
+   "clique_grow_runs": 5
+  },
+  "chain_k8": {
+   "clique_grow_s": 0.1442,
+   "edge_cover_s": 0.0158,
+   "clique_grow_runs": 5
+  },
+  "chain_k9": {
+   "clique_grow_s": 0.4508,
+   "edge_cover_s": 0.0379,
+   "clique_grow_runs": 5
+  },
+  "chain_k10": {
+   "clique_grow_s": 1.4541,
+   "edge_cover_s": 0.1056,
+   "clique_grow_runs": 5
+  },
+  "chain_k11": {
+   "clique_grow_s": 4.7096,
+   "edge_cover_s": 0.3135,
+   "clique_grow_runs": 5
+  },
+  "chain_k12": {
+   "clique_grow_s": 15.5412,
+   "edge_cover_s": 0.9542,
+   "clique_grow_runs": 5
+  },
+  "chain_k13": {
+   "clique_grow_s": 51.2771,
+   "edge_cover_s": 2.9955,
+   "clique_grow_runs": 5
+  },
+  "star_k3": {
+   "clique_grow_s": 0.0022,
+   "edge_cover_s": 0.0014,
+   "clique_grow_runs": 5
+  },
+  "star_k4": {
+   "clique_grow_s": 0.0047,
+   "edge_cover_s": 0.0022,
+   "clique_grow_runs": 5
+  },
+  "star_k5": {
+   "clique_grow_s": 0.0103,
+   "edge_cover_s": 0.0032,
+   "clique_grow_runs": 5
+  },
+  "star_k6": {
+   "clique_grow_s": 0.0259,
+   "edge_cover_s": 0.0046,
+   "clique_grow_runs": 5
+  },
+  "star_k7": {
+   "clique_grow_s": 0.0736,
+   "edge_cover_s": 0.0076,
+   "clique_grow_runs": 5
+  },
+  "star_k8": {
+   "clique_grow_s": 0.2338,
+   "edge_cover_s": 0.0153,
+   "clique_grow_runs": 5
+  },
+  "star_k9": {
+   "clique_grow_s": 0.7969,
+   "edge_cover_s": 0.0381,
+   "clique_grow_runs": 5
+  },
+  "star_k10": {
+   "clique_grow_s": 2.7981,
+   "edge_cover_s": 0.1069,
+   "clique_grow_runs": 5
+  },
+  "star_k11": {
+   "clique_grow_s": 9.8858,
+   "edge_cover_s": 0.3167,
+   "clique_grow_runs": 5
+  },
+  "star_k12": {
+   "clique_grow_s": 35.1683,
+   "edge_cover_s": 0.9711,
+   "clique_grow_runs": 5
+  },
+  "star_k13": {
+   "clique_grow_s": 126.0878,
+   "edge_cover_s": 3.0253,
+   "clique_grow_runs": 5
+  },
+  "cycle_k3": {
+   "clique_grow_s": 0.0032,
+   "edge_cover_s": 0.0022,
+   "clique_grow_runs": 5
+  },
+  "cycle_k4": {
+   "clique_grow_s": 0.0076,
+   "edge_cover_s": 0.0032,
+   "clique_grow_runs": 5
+  },
+  "cycle_k5": {
+   "clique_grow_s": 0.016,
+   "edge_cover_s": 0.0034,
+   "clique_grow_runs": 5
+  },
+  "cycle_k6": {
+   "clique_grow_s": 0.0392,
+   "edge_cover_s": 0.0047,
+   "clique_grow_runs": 5
+  },
+  "cycle_k7": {
+   "clique_grow_s": 0.1124,
+   "edge_cover_s": 0.0076,
+   "clique_grow_runs": 5
+  },
+  "cycle_k8": {
+   "clique_grow_s": 0.3459,
+   "edge_cover_s": 0.0156,
+   "clique_grow_runs": 5
+  },
+  "cycle_k9": {
+   "clique_grow_s": 1.1418,
+   "edge_cover_s": 0.0379,
+   "clique_grow_runs": 5
+  },
+  "cycle_k10": {
+   "clique_grow_s": 3.7986,
+   "edge_cover_s": 0.1096,
+   "clique_grow_runs": 5
+  },
+  "cycle_k11": {
+   "clique_grow_s": 12.7267,
+   "edge_cover_s": 0.3159,
+   "clique_grow_runs": 5
+  },
+  "cycle_k12": {
+   "clique_grow_s": 42.7824,
+   "edge_cover_s": 0.9684,
+   "clique_grow_runs": 5
+  },
+  "cycle_k13": {
+   "clique_grow_s": 143.7939,
+   "edge_cover_s": 2.9665,
+   "clique_grow_runs": 5
+  },
+  "complete_k3": {
+   "clique_grow_s": 0.0032,
+   "edge_cover_s": 0.0022,
+   "clique_grow_runs": 5
+  },
+  "complete_k4": {
+   "clique_grow_s": 0.0374,
+   "edge_cover_s": 0.0043,
+   "clique_grow_runs": 5
+  },
+  "complete_k5": {
+   "clique_grow_s": 3.2133,
+   "edge_cover_s": 0.0051,
+   "clique_grow_runs": 5
+  },
+  "complete_k6": {
+   "clique_grow_s": 1595.6545,
+   "edge_cover_s": 0.0072,
+   "clique_grow_runs": 1
+  },
+  "complete_k7": {
+   "clique_grow_s": null,
+   "edge_cover_s": 0.0103,
+   "clique_grow_runs": 0
+  },
+  "complete_k8": {
+   "clique_grow_s": null,
+   "edge_cover_s": 0.0186,
+   "clique_grow_runs": 0
+  },
+  "complete_k9": {
+   "clique_grow_s": null,
+   "edge_cover_s": 0.04,
+   "clique_grow_runs": 0
+  },
+  "complete_k10": {
+   "clique_grow_s": null,
+   "edge_cover_s": 0.1042,
+   "clique_grow_runs": 0
+  },
+  "complete_k11": {
+   "clique_grow_s": null,
+   "edge_cover_s": 0.3029,
+   "clique_grow_runs": 0
+  },
+  "complete_k12": {
+   "clique_grow_s": null,
+   "edge_cover_s": 0.9177,
+   "clique_grow_runs": 0
+  },
+  "complete_k13": {
+   "clique_grow_s": null,
+   "edge_cover_s": 2.7654,
+   "clique_grow_runs": 0
+  }
+ }
+}

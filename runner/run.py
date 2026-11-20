@@ -1,8 +1,8 @@
 """Single-run orchestrator: experiment.yaml + environment.yaml -> one run.
 
     python3 runner/run.py \
-        --experiment experiments/example_experiment.yaml \
-        --environment experiments/example_environment.yaml \
+        --experiment demo/configs/demo_experiment.yaml \
+        --environment demo/configs/demo_environment.yaml \
         --out-dir <per-experiment output dir>
 
 Flow: VALIDATE (reject illegal combos, naming the violated constraint) -> MATERIALIZE
@@ -183,8 +183,7 @@ def collect_trino_captures(rows: list[dict], exec_dir: Path, *, with_qep: bool,
                 captures["qep"] = qep_dirs
     if with_correctness and rows:
         captures["correctness"] = {
-            "mechanism": "trino per-batch native-MR full-tuple multiset diff "
-                         "(the Gate B renderer)",
+            "mechanism": "trino per-batch native-MR full-tuple multiset diff",
             "status": rows[0].get("correctness_status"),
             "detail_path": rows[0].get("correctness_path")}
     return captures

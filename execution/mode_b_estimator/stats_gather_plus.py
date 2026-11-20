@@ -1,7 +1,7 @@
-"""Enriched per-column stats gatherer for the mode_b_v3 selectivity estimator.
+"""Enriched per-column stats gatherer for the mode_b_enriched selectivity estimator.
 
 ,,stats_gather.gather'' PLUS two cheap single-pass O(N) marginal sketches that
-mode_b_v3 consumes to fix two weak spots of the stats-only mode_b_v2 baseline:
+mode_b_enriched consumes:
 
   (i)  skewed categorical equality: a top-K MCV frequency stat
        (,,contract.Frequencies'') recovers the true per-value mass and the exact
@@ -11,7 +11,7 @@ mode_b_v3 consumes to fix two weak spots of the stats-only mode_b_v2 baseline:
        CDF, vs the baseline's uniform ,,(c-lo)/span''.
 
 Both are one ,,GROUP BY'' / one ,,approx_percentile'' call, the same single-pass
-O(N) cost class as the base stats (NOT the O(N^2) pairwise oracle). On
+O(N) cost class as the base stats (not the O(N^2) exact pairwise count). On
 independent row pairs each such selectivity is a functional of the marginal
 alone (e.g. ,,P(A==B) = Sum_v f_v^2''), so a richer marginal suffices with no
 joint stat.
@@ -89,7 +89,8 @@ def _percentile_points(bins: int) -> List[float]:
     return pts
 
 
-def build_hist_sql(col: str, table: str, *, bins: int = 32, timestamp_columns=_TIMESTAMP_COLUMNS) -> str:
+def build_hist_sql(col: str, table: str, *, bins: int = 32, timestamp_columns=_TIMESTAMP_COLUMNS,
+                   dialect=None) -> str:
     """Equi-depth quantile-sketch query for a numeric (or timestamp) column.
 
         SELECT approx_percentile(<numeric col>, ARRAY[0.0, 1/B, ..., 1.0]) AS pcts
@@ -99,13 +100,12 @@ def build_hist_sql(col: str, table: str, *, bins: int = 32, timestamp_columns=_T
     O(N). Timestamp columns are wrapped in ,,to_unixtime'' so the edges land in
     the seconds domain (same as base low/high and the window literal).
     """
-    numeric = stats_gather._numeric_expr(col, timestamp_columns)  # to_unixtime(col) for timestamps
+    from eimer.sql.backend import SqlDialect, backend_for
+    dialect = dialect or SqlDialect.TRINO
+    numeric = stats_gather._numeric_expr(col, timestamp_columns, dialect)  # seconds cast for timestamps
     pts = _percentile_points(bins)
-    arr = ", ".join(repr(p) for p in pts)
-    # CAST to double: approx_percentile rejects decimal, so a DECIMAL column would fail
-    # without this; harmless for the already-double cases (incl. to_unixtime).
     return (
-        f"SELECT approx_percentile(CAST({numeric} AS double), ARRAY[{arr}]) AS {HIST_ALIAS}\n"
+        f"SELECT {backend_for(dialect).approx_percentiles(numeric, pts)} AS {HIST_ALIAS}\n"
         f"FROM {table}"
     )
 
@@ -237,7 +237,8 @@ def gather_plus(
 
     hists: Dict[str, Histogram] = {}
     for col in num_targets:
-        _cols, rows = client.execute(build_hist_sql(col, table, bins=bins, timestamp_columns=timestamp_columns))
+        _cols, rows = client.execute(build_hist_sql(col, table, bins=bins, timestamp_columns=timestamp_columns,
+                                                    dialect=stats_gather.client_dialect(client)))
         row = _first_row(rows, f"histogram({col})")
         percentiles = row[0]  # the ARRAY value (single projected column)
         hists[col] = parse_histogram(percentiles, bins)

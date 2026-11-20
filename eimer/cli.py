@@ -117,7 +117,7 @@ def _apply_strategy_filter(strategies: List[StrategyWithPlans], positions: Dict[
 
 
 def _should_run_full_pipeline(args: argparse.Namespace) -> bool:
-    """true when the args request full-pipeline planning rather than a legacy emit."""
+    """true when the args request full-pipeline planning."""
     return bool(
         args.dep_graph_json
         or args.output_json is not None
@@ -245,7 +245,7 @@ def _run_full_pipeline_mode(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """cli entry point: dispatch to the full pipeline or the legacy emit path."""
+    """cli entry point: dispatch to the full pipeline or the emit path."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 

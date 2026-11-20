@@ -7,8 +7,8 @@ calibrated on materialized views rather than derived from the storage format:
     bytes(view) = n_files * (F0 + FC * n_columns) + rows * SAFETY * sum_col bytes_per_row(col)
 
 views are INSERT-grown per batch and never truncated, so all views are cumulative at the
-final batch with one parquet file per batch. Kleene caches are unpriced; constants are
-pinned to a trino/iceberg/minio snappy-parquet stack and must be refit if it changes.
+final batch with one parquet file per batch. Kleene caches are unpriced; the constants hold
+for Trino with Iceberg and snappy-compressed Parquet.
 """
 from __future__ import annotations
 
@@ -21,10 +21,10 @@ C_TS = 1.029            # bytes/row per TIMESTAMP(6) column
 C_DBL = 3.746           # bytes/row per DOUBLE column
 FILE_OVERHEAD_BASE = 46.5      # bytes per parquet file
 FILE_OVERHEAD_PER_COL = 456.0  # + per column (footer/statistics scale with width)
-# safety factor inflating the total prediction; refit if it drifts.
+# safety factor on the total prediction
 TOTAL_SAFETY = 1.13
 
-_TYPE_BYTES = {"NUMBER_ID": C_ID, "TIMESTAMP6": C_TS, "BINARY_DOUBLE": C_DBL}
+_TYPE_BYTES = {"BIGINT": C_ID, "TIMESTAMP": C_TS, "DOUBLE": C_DBL}
 
 
 def view_columns(varset, dep, *, measures_time: bool = True) -> list[tuple[str, str]]:
@@ -36,13 +36,13 @@ def view_columns(varset, dep, *, measures_time: bool = True) -> list[tuple[str, 
         band_vars.add(e.var_right)
     cols = []
     for v in sorted(varset, key=lambda x: dep.positions[x]):
-        cols.append((f"{v}_id", "NUMBER_ID"))
-        cols.append((f"{v}_ts", "TIMESTAMP6"))
+        cols.append((f"{v}_id", "BIGINT"))
+        cols.append((f"{v}_ts", "TIMESTAMP"))
         if v in band_vars:
-            cols.append((f"{v}_lat", "BINARY_DOUBLE"))
-            cols.append((f"{v}_lon", "BINARY_DOUBLE"))
+            cols.append((f"{v}_lat", "DOUBLE"))
+            cols.append((f"{v}_lon", "DOUBLE"))
         if measures_time:
-            cols.append((f"{v}_time", "TIMESTAMP6"))
+            cols.append((f"{v}_time", "TIMESTAMP"))
     return cols
 
 

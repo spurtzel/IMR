@@ -139,7 +139,7 @@ def cache_column_schema_for_view(
 # live VARCHAR column makes the row width underivable (flagged, never guessed).
 _SQL_TYPE_BYTES = {
     "BIGINT": 8, "LONG": 8, "INTEGER": 4, "INT": 4, "SMALLINT": 2, "TINYINT": 1,
-    "DOUBLE": 8, "REAL": 4, "FLOAT": 8, "DECIMAL": 8, "NUMERIC": 8, "NUMBER": 8,
+    "DOUBLE": 8, "REAL": 4, "FLOAT": 8, "DECIMAL": 8, "NUMERIC": 8,
     "BOOLEAN": 1, "BOOL": 1, "BIT": 1,
     "TIMESTAMP": 8, "DATE": 4, "TIME": 8,
 }

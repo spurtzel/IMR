@@ -5,7 +5,8 @@ Loads a synthetic datagen frame into a Trino table and runs the two arms:
                        per queried batch (the baseline).
   * eimer_streaming -- an EIMER cover: per-view delta updates plus a dedup'd
                        compose on queried batches (both TIMED); ingestion into the
-                       staging tables is untimed by convention.
+                       staging tables is untimed by convention. The arm body is the
+                       engine-neutral demo/eimer_arm.py (shared with duckdb_exec).
 
 Measurement discipline pinned per session in ,,connect'': join reordering OFF (the
 cost-model-selected join order runs verbatim), intra-query parallelism OFF, and a
@@ -18,7 +19,6 @@ gate (EIMER result == native MATCH_RECOGNIZE).
 """
 from __future__ import annotations
 
-import re
 import sys
 import time
 from pathlib import Path
@@ -30,14 +30,10 @@ for _p in (str(REPO), str(REPO / "execution")):
         sys.path.insert(0, _p)
 
 from trino_client import TrinoClient, TrinoClientError, TrinoConnectionConfig  # noqa: E402
-from compute_selectivities import compute_selectivities_payload  # noqa: E402
-from selectivity_payload import parse_selectivities_payload  # noqa: E402
-from eimer.workload import make_workload  # noqa: E402
 from eimer.query.query_spec import query_spec_to_match_recognize_sql  # noqa: E402
-from eimer.sql.sql_emitter import generate_sql_statements_for_cover  # noqa: E402
 from eimer.sql.sql_dialect import SqlDialect  # noqa: E402
-from eimer.models import make_view  # noqa: E402
-from eimer.selection.plan_build import build_plan  # noqa: E402
+import eimer_arm  # noqa: E402
+from eimer_arm import b_unified_workload, build_cover_plan  # noqa: E402,F401  (re-exported)
 
 EVENT_COLS = ("id", "time", "ts", "primary_type", "etype", "lon", "lat")
 # Loadable column types; ekey (BIGINT equi key, DatagenConfig.equi) is optional and
@@ -117,25 +113,6 @@ def load_frame(client, frame, table: str = "events", chunk_chars: int = 700_000)
     return int(rows[0][0])
 
 
-def b_unified_workload(client, dep, *, table, total_events, batches):
-    """Workload scored from the b_unified estimator, measured on the loaded table
-    (the same estimator the config runner uses), so plan selection sees estimated
-    rather than generation-target selectivities. Returns (workload, payload)."""
-    payload = compute_selectivities_payload(dep, mode="b_unified", client=client,
-                                            table=table)
-    selectivities = parse_selectivities_payload(payload, dep)
-    wl = make_workload(dep, total_events=total_events, batches=batches,
-                       selectivities=selectivities)
-    return wl, payload
-
-
-def build_cover_plan(dep, family_toks, all_vars, wl):
-    """Materialize the (family == compose) cover into an executable strategy via the
-    production plan builder (bushy inner join order, bushy update order)."""
-    fam = frozenset(make_view(t.split("_")) for t in family_toks)
-    return build_plan(dep, fam, fam, all_vars, workload=wl)
-
-
 def mr_streaming(client, spec, table, N, B, qb, key_cols, T, warmup=True):
     """Native MATCH_RECOGNIZE arm: re-scan the cumulative window id <= (b*N)//B on
     each queried batch (count(*) forces full evaluation); the final batch pulls the
@@ -180,102 +157,21 @@ def mr_streaming(client, spec, table, N, B, qb, key_cols, T, warmup=True):
     return round(tot, 1), final, tuples, dict(spent_ms=round(tot, 1), per_scan_ms=per_scan)
 
 
+class TrinoEngine(eimer_arm.Engine):
+    dialect = SqlDialect.TRINO
+    error_type = TrinoClientError
+
+    def set_wall(self, seconds: float) -> None:
+        self.client.execute(f"SET SESSION query_max_run_time = '{int(seconds)}s'")
+
+    def is_dnf(self, err) -> bool:
+        return is_dnf(err)
+
+
 def eimer_streaming(client, dep, toks, all_vars, wl, spec, table, N, B, qb, key_cols, T,
                     measure_state: bool = False, warmup: bool = True):
-    """EIMER cover arm, full per-batch protocol: maintain hist/bat staging tables
-    (ingestion untimed by convention), then per batch run the framework's own
-    per-view delta updates (TIMED) and, on queried batches, the dedup'd compose
-    (TIMED; count(*) on intermediate batches, full-tuple keys on the final one for
-    the identity gate). Statements come from the production SQL emitter, so
-    correctness rides on the same SQL the pipeline executes.
-
-    measure_state=True additionally snapshots, untimed after each batch, the resident
-    state (sum over cache tables of count(*)) and reports its max over batches, the
-    quantity the storage budget M constrains.
-
-    With warmup (the default), the whole protocol first runs once untimed.
-
-    Returns (total_ms, count, tuple_set, state) where state is a dict
-    (max_resident_rows, per_cache_rows) or None; (None, None, None, None) on a DNF."""
-    if warmup:
-        warm = eimer_streaming(client, dep, toks, all_vars, wl, spec, table, N, B, qb,
-                               key_cols, T, measure_state=False, warmup=False)
-        if warm[0] is None:  # a warm-up DNF: the timed pass would DNF too
-            return warm
-        return eimer_streaming(client, dep, toks, all_vars, wl, spec, table, N, B, qb,
-                               key_cols, T, measure_state=measure_state, warmup=False)
-    client.execute(f"SET SESSION query_max_run_time = '{int(T)}s'")
-    positions = dep.positions
-    last_var = max(all_vars, key=lambda v: positions[v])
-    toks = list(toks)
-    if not any(last_var in make_view(t.split("_")) for t in toks):
-        toks.append(last_var)  # driver-staging singleton (the streaming protocol's anchor)
-    o, plan, nodes = build_cover_plan(dep, toks, all_vars, wl)
-    HIST, BAT = "hist_bp", "bat_bp"
-    st = generate_sql_statements_for_cover(o, dep, nodes, o.composition_plans[0],
-                                           o.update_plans[0], base_table=HIST,
-                                           batch_table=BAT, dialect=SqlDialect.TRINO)
-    result_q = (getattr(st, "post_filter_sql", "") or st.composition_sql).rstrip().rstrip(";")
-    keysel = ", ".join(c.lower() for c in key_cols)
-    cache_sel = {}  # cache table -> its (hist,bat)-parameterized SELECT
-    for u in st.update_statements:
-        cache = re.search(r"INSERT\s+INTO\s+(cache_\w+)", u, re.I).group(1)
-        cache_sel[cache] = re.sub(rf"INSERT\s+INTO\s+{cache}\s*", "", u,
-                                  flags=re.I).rstrip().rstrip(";")
-
-    qbs = sorted(qb)
-    tot = 0.0
-    final = None
-    tuples = None
-    max_resident = 0
-    peak_per_cache: dict[str, int] = {}
-    try:
-        # SETUP (untimed): empty staging (inheriting the events-table schema, incl.
-        # an optional ekey) + empty caches (CTAS over the empty staging yields the schema)
-        for t in (HIST, BAT):
-            drop_table(client, t)
-            client.execute(f"CREATE TABLE {t} AS SELECT * FROM {table} WITH NO DATA")
-        for cache, sel in cache_sel.items():
-            drop_table(client, cache)
-            client.execute(f"CREATE TABLE {cache} AS {sel}")
-        for b in range(1, B + 1):
-            lo, hi = ((b - 1) * N) // B, (b * N) // B
-            # ingestion (untimed by convention)
-            drop_table(client, BAT)
-            client.execute(f"CREATE TABLE {BAT} AS SELECT * FROM {table} "
-                           f"WHERE id > {lo} AND id <= {hi}")
-            client.execute(f"INSERT INTO {HIST} SELECT * FROM {BAT}")
-            # TIMED: per-view delta updates over (hist, bat)
-            t0 = time.perf_counter()
-            for cache, sel in cache_sel.items():
-                client.execute(f"INSERT INTO {cache} {sel}")
-            tot += (time.perf_counter() - t0) * 1000.0
-            if b in qb:  # TIMED: the dedup'd compose on queried batches
-                last = (b == qbs[-1])
-                t0 = time.perf_counter()
-                _, rows = client.execute(
-                    f"SELECT {keysel if last else 'count(*)'} FROM ({result_q})")
-                tot += (time.perf_counter() - t0) * 1000.0
-                if last:
-                    tuples = frozenset(tuple(int(x) for x in r) for r in rows)
-                    final = len(rows)
-                else:
-                    final = int(rows[0][0]) if rows else 0
-            if measure_state:  # UNTIMED resident-state snapshot
-                resident = 0
-                for cache in cache_sel:
-                    _, rows = client.execute(f"SELECT count(*) FROM {cache}")
-                    n = int(rows[0][0])
-                    resident += n
-                    peak_per_cache[cache] = max(peak_per_cache.get(cache, 0), n)
-                max_resident = max(max_resident, resident)
-        state = (dict(max_resident_rows=max_resident, per_cache_rows=peak_per_cache)
-                 if measure_state else None)
-        return round(tot, 1), final, tuples, state
-    except TrinoClientError as e:
-        if is_dnf(e):
-            return None, None, None, None
-        raise
-    finally:
-        for t in [HIST, BAT] + list(cache_sel):
-            drop_table(client, t)
+    """the shared EIMER arm (demo/eimer_arm.py) on this Trino client: full per-batch
+    protocol, ingestion untimed, delta updates + dedup'd compose timed, full-tuple keys
+    on the final batch; measure_state snapshots the resident state untimed."""
+    return eimer_arm.eimer_streaming(TrinoEngine(client), dep, toks, all_vars, wl, spec, table,
+                                     N, B, qb, key_cols, T, measure_state=measure_state, warmup=warmup)

@@ -995,7 +995,7 @@ def _parse_measures(
                 if variable.upper() == "Z":
                     collector.add(
                         "wildcard_measure_not_supported",
-                        "Measures over wildcard variable Z are not supported in v1.",
+                        "Measures over wildcard variable Z are not supported.",
                         clause="MEASURES",
                         detail=item,
                     )
@@ -1044,7 +1044,7 @@ def _parse_measures(
             if variable.upper() == "Z":
                 collector.add(
                     "wildcard_measure_not_supported",
-                    "Measures over wildcard variable Z are not supported in v1.",
+                    "Measures over wildcard variable Z are not supported.",
                     clause="MEASURES",
                     detail=item,
                 )
@@ -1061,7 +1061,7 @@ def _parse_measures(
         if variable_upper not in kleene_variables:
             collector.add(
                 "non_kleene_aggregate_measure_not_supported",
-                "FIRST/LAST/COUNT measures are only allowed for Kleene variables in v1.",
+                "FIRST/LAST/COUNT measures are only allowed for Kleene variables.",
                 clause="MEASURES",
                 detail=item,
             )
@@ -1161,7 +1161,7 @@ def compile_sql_text(sql_text: str) -> CompileResult:
     if one_row_segment!="ONE ROW PER MATCH":
         collector.add(
             "unsupported_row_output_policy",
-            "Only ONE ROW PER MATCH is supported in v1.",
+            "Only ONE ROW PER MATCH is supported.",
             clause="ONE ROW PER MATCH",
             detail=clause_segments["ONE ROW PER MATCH"],
         )
@@ -1170,7 +1170,7 @@ def compile_sql_text(sql_text: str) -> CompileResult:
     if after_match_segment != "AFTER MATCH SKIP TO NEXT ROW":
         collector.add(
             "unsupported_after_match_policy",
-            "Only AFTER MATCH SKIP TO NEXT ROW is supported in v1.",
+            "Only AFTER MATCH SKIP TO NEXT ROW is supported.",
             clause="AFTER MATCH",
             detail=clause_segments["AFTER MATCH"],
         )

@@ -429,7 +429,7 @@ def validate_query_spec(spec: QuerySpec, *, allow_kleene: bool = False) -> None:
             raise ValueError(f"QuerySpec {spec.name!r} event_schema is missing required column {required!r}")
 
     if spec.kleene_annotations and not allow_kleene:
-        raise ValueError("QuerySpec v1 cost-supported path does not allow Kleene annotations")
+        raise ValueError("QuerySpec cost-supported path does not allow Kleene annotations")
 
 
 _QUANTIFIER_SUFFIX = {"ONE": "", "PLUS": "+", "RELUCTANT_PLUS": "+?"}
