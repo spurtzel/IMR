@@ -7,15 +7,15 @@ Part "budget": for each workload, the storage budget M is shrunk from the uncons
   native MATCH_RECOGNIZE are executed; the figure shows the speed-up over native MR of the plan selected at each
   budget (median and min-max over the workloads; "drop-only": without the all-singleton strategy as a fallback).
   paper: 12 workloads (chain, star, diamond, complete, triangle, cycle; k = 4 .. 6) on tables of 100k-200k rows
-Part "shift": a chain query (k = 4) over a table whose selectivities loosen after batch 6 of 20. Four arms, per-batch
-  latency: native MR; the plan selected before the shift, kept ("stale"); re-selection right at the shift ("instant":
-  the new plan's views are rebuilt over the history, then it continues); re-selection after a lag of four batches,
-  on statistics of the post-shift batches seen so far ("delayed").
+Part "shift": a chain query (k = 4) over a table whose selectivities loosen after batch 6 of 20. Four approaches,
+  per-batch latency: native MR; the plan selected before the shift, kept ("stale"); re-selection right at the shift
+  ("instant": the new plan's views are rebuilt over the history, then it continues); re-selection after a lag of four
+  batches, on statistics of the post-shift batches seen so far ("delayed").
   paper: N = 100,000; (sigma, type rate) = (0.002, 0.02) before and (0.013, 0.03) after the shift
-Native MR has no window in these queries, so it is feasible on Trino for small tables only.
+Native MR has no window in these queries.
 
-Arms run one after the other, single-threaded, join reordering off, no warm-up of the approaches; ingestion is untimed for EIMER.
-Gates: every executed plan returns the tuples of native MR (of the unconstrained pick / the stale plan where MR does
+Single-threaded, join reordering off; ingestion is untimed for EIMER.
+Checks: every executed plan returns the tuples of native MR (of the unconstrained pick / the stale plan where MR does
 not finish); the descent equals the selector's own decisions under the corresponding budgets.
 
 Axis values and limits (environment):
@@ -23,7 +23,7 @@ Axis values and limits (environment):
   EIMER_REPRO_BUDGET_WORKLOADS=chain:4:0.05:0.05:3000:5,...     topology:k:sigma:type rate:N:batches per workload
   EIMER_REPRO_SHIFT_N=100000  EIMER_REPRO_SHIFT_PARAMS=0.002,0.02,0.013,0.03   (sigma1, rate1, sigma2, rate2)
   EIMER_REPRO_WALL=<s>               limit per statement (default 1,800 s)
-  EIMER_REPRO_MR_CELL_BOUND=<s>      limit for the total of the native-MR arm (default 7,200 s)
+  EIMER_REPRO_MR_CELL_BOUND=<s>      limit for the total of the native-MR approach (default 7,200 s)
 
   python3 budget_shift.py --list
   python3 budget_shift.py --only budget_chain_k4_s0.05_f0.05_n3000_b5 --results-dir <dir>
@@ -40,9 +40,9 @@ import pandas as pd
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import trino_lib as tl  # noqa: E402  (wires the repository onto sys.path)
+import trino_lib as tl  # noqa: E402
 import trino_exec  # noqa: E402
-import common  # noqa: E402  (demo/common.py)
+import common  # noqa: E402
 import eimer.selection.plan_selection_clique_grow as cg  # noqa: E402
 from eimer.selection.state_size_trino import peak_state_bytes_trino  # noqa: E402
 from eimer.query.temporal_propagation import explicit_selection_inputs  # noqa: E402
@@ -97,7 +97,7 @@ def wall_s() -> int:
 
 
 def with_driver(toks: list, vs: list) -> list:
-    """the views to execute: the cover plus the last variable's own view if no view holds it (the query is driven by it)."""
+    """the views to execute."""
     return list(toks) + ([vs[-1]] if not any(vs[-1] in make_view(t.split("_")) for t in toks) else [])
 
 
@@ -107,11 +107,9 @@ def gate(tuples, truth):
     return dict(n=len(tuples), n_reference=len(truth), missing=len(truth - tuples), extra=len(tuples - truth), identical=(tuples == truth))
 
 
-# ---------------------------------------------------------------- part "budget"
 def drop_trajectory(dep, wl, qb, kappa):
     """[(cover, predicted peak bytes, predicted cost)]: the unconstrained pick, then one entry per repair drop (the view
-    with the least cost increase per predicted byte freed, re-evaluated after every drop) down to the empty cover.
-    The same rule as the selector's budget repair; run_budget() checks the two against each other."""
+    with the least cost increase per predicted byte freed) down to the empty cover."""
     pos = dep.positions
     pick = cg.select_clique_grow_plan(dep, wl, query_batches=qb, kappa=kappa)
     dsel, wsel = explicit_selection_inputs(dep, wl)
@@ -149,8 +147,6 @@ def run_budget(c: dict, client) -> dict:
                              lambda: generate_events(common.make_datagen_config(n, c["sigma"], ftype=c["ftype"], ntypes=8, seed=42)).frame)
     wl, payload = tl.estimated_workload(client, dep, table, n, B, BACKEND.window_rule)
     traj = drop_trajectory(dep, wl, qb, BACKEND.kappa)
-    # the descent against the selector's own decisions: under M = a step's predicted peak the selector returns that
-    # step's cover, or the empty cover (= all singletons) where that is cheaper
     consistent = True
     for i, (cover, pk, _) in enumerate(traj):
         res = cg.select_clique_grow_plan(dep, wl, query_batches=qb, kappa=BACKEND.kappa, max_storage_bytes=pk, peak_bytes_fn=peak_state_bytes_trino)
@@ -166,7 +162,7 @@ def run_budget(c: dict, client) -> dict:
     for cover, pk, cost in traj:
         toks = tl.toks_of(cover, pos)
         floor = not toks
-        run_toks = list(vs) if floor else with_driver(toks, vs)   # the empty cover is executed as the all-singleton strategy
+        run_toks = list(vs) if floor else with_driver(toks, vs)
         rec, tuples = tl.eimer_streaming(client, dep, run_toks, all_vars, wl, spec, table, n, B, qb, key_cols, T, measure_storage=True)
         if truth is None and tuples is not None:
             truth, truth_name = tuples, "the unconstrained pick"
@@ -191,10 +187,8 @@ def run_budget(c: dict, client) -> dict:
                            all_plans_finished=all(s["status"] == "ok" for s in steps)))
 
 
-# ---------------------------------------------------------------- part "shift"
 def shift_frame(c: dict) -> pd.DataFrame:
-    """the generator's table for (sigma1, rate1) up to the shift, then its table for (sigma2, rate2), spliced: ids
-    continue and both time columns are moved past the first part's end."""
+    """the generator's table for (sigma1, rate1) up to the shift, then its table for (sigma2, rate2); ids continue and both time columns continue after the first part."""
     bsz = c["n"] // c["batches"]
     n1 = c["shift_after_batch"] * bsz
     f1 = generate_events(common.make_datagen_config(n1, c["sigma1"], ftype=c["ftype1"], ntypes=8, seed=42)).frame
@@ -228,7 +222,6 @@ def run_shift(c: dict, client) -> dict:
     key_cols = [f"{v}_id" for v in vs]
     qb = frozenset(tl.query_schedule(B))
     table = tl.ensure_events(client, f"events_shift_n{n}", n, lambda: shift_frame(c))
-    # the plan selected before the shift, and the plans a re-selection finds on the post-shift batches seen by then
     wl_old, pay_old = estimates_on(client, dep, table, 0, shift_b * bsz, n, B)
     wl_new, pay_new = estimates_on(client, dep, table, shift_b * bsz, (shift_b + lag) * bsz, n, B)
     pick = lambda wl: tl.toks_of(cg.select_clique_grow_plan(dep, wl, query_batches=qb, kappa=BACKEND.kappa).compose, pos)
@@ -251,14 +244,13 @@ def run_shift(c: dict, client) -> dict:
     for name, switch in (("instant", shift_b + 1), ("delayed", shift_b + lag)):
         pre = switch - 1
         seg_a, _ = tl.eimer_stream_bounds(client, dep, run_old, all_vars, wl_old, table, uniform[:pre], set(range(1, pre + 1)), key_cols, T)
-        # the switch: the new plan's views are rebuilt over the history (first batch, not queried), then the stream continues
         bounds_b = [pre * bsz] + uniform[pre:]
         seg_b, b_t = tl.eimer_stream_bounds(client, dep, run_new, all_vars, wl_new, table, bounds_b, set(range(2, len(bounds_b) + 1)), key_cols, T, measure_storage=True)
         lat = [[b, round(u + (q or 0), 1)] for b, _, u, q in seg_a.get("per_batch", [])]
         pb = seg_b.get("per_batch", [])
         rebuild = pb[0][2] if pb else None
         for j, (_, _, u, q) in enumerate(pb[1:]):
-            lat.append([switch + j, round(u + (q or 0) + ((rebuild or 0) if j == 0 else 0), 1)])   # the rebuild is charged to the switch batch
+            lat.append([switch + j, round(u + (q or 0) + ((rebuild or 0) if j == 0 else 0), 1)])
         ok = seg_a["status"] == "ok" and seg_b["status"] == "ok"
         arms[name] = dict(status=("ok" if ok else "dnf" if "dnf" in (seg_a["status"], seg_b["status"]) else "error"), switch_batch=switch,
                           total_ms=(round(seg_a["total_ms"] + seg_b["total_ms"], 1) if ok else None), rebuild_ms=rebuild,

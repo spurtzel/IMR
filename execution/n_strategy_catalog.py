@@ -49,8 +49,6 @@ def _enumerate_eimer_strategies(
     dep_graph = query_spec_to_dependency_graph(query_spec)
     if query_spec.name == "canonical_r_b_m":
         validate_dependency_graph_matches_canonical(dep_graph, config)
-    # Attaching plans to all 2^|views| strategies is intractable at n=4, so curate the view-sets
-    # here before the attach when EIMER_CURATED_MAX_STRATEGIES>0. 0 = full enumeration.
     _strategies = enumerate_strategies(dep_graph)
     _curated = int(os.environ.get("EIMER_CURATED_MAX_STRATEGIES", "0"))
     if _curated > 0:
@@ -78,9 +76,6 @@ def build_eimer_strategy_index(
     only_with_nc_subpattern: bool = False,
     query_spec: QuerySpec | None = None,
 ):
-    # Full enumeration attaches plans to all 2^|views| strategies, intractable at n=4. When
-    # EIMER_CURATED_MAX_STRATEGIES>0, curate to a bounded subset here so every call site uses it.
-    # 0 = full enumeration.
     _curated = int(os.environ.get("EIMER_CURATED_MAX_STRATEGIES", "0"))
     if _curated > 0:
         return build_curated_strategy_index(config, query_spec=query_spec, max_strategies=_curated)
@@ -98,12 +93,12 @@ def build_eimer_strategy_index(
 
 
 def _curate_strategy_subset(dep_graph, strategies, *, max_strategies, max_views_per_strategy):
-    """Return a bounded, cross-spanning subset of the enumerated strategy view-sets.
+    """Returns a bounded, cross-spanning subset of the enumerated strategy view-sets.
 
-    Keeps representatives spanning the materialization-granularity spectrum and the NC shapes,
-    one+ per (,,max_view_size'', has_nc, n_views) class; drops strategies with more than
-    ,,max_views_per_strategy'' views (redundant and expensive to attach). Composition-topology
-    diversity comes from the per-strategy variant enumeration downstream."""
+        Keeps representatives spanning the materialization-granularity spectrum and the NC shapes,
+        one or more per (`max_view_size`, has_nc, n_views) class; drops strategies with more than
+        `max_views_per_strategy` views.
+    """
     positions = dep_graph.positions
     full_view = frozenset(dep_graph.variables)
     all_singletons = frozenset(frozenset({v}) for v in dep_graph.variables)
@@ -111,7 +106,6 @@ def _curate_strategy_subset(dep_graph, strategies, *, max_strategies, max_views_
     def feats(st):
         return (max(len(v) for v in st), strategy_has_non_contiguous_subpattern(st, positions), len(st))
 
-    # a deterministic sort key for a strategy (so selection is reproducible across runs)
     def skey(st):
         return tuple(sorted(view_sort_key(v, positions) for v in st))
 
@@ -125,18 +119,15 @@ def _curate_strategy_subset(dep_graph, strategies, *, max_strategies, max_views_
         seen.add(st)
         selected.append(st)
 
-    # endpoints first: the wide-internalizing full view, then the fully-deferred singletons.
     add(next((st for st in pool if st == frozenset({full_view})), None))
     add(next((st for st in pool if st == all_singletons), None))
 
-    # one representative (the lowest-view-count, then deterministic) per structural class.
     groups: dict = {}
     for st in pool:
         groups.setdefault(feats(st), []).append(st)
     for key in sorted(groups):
         add(min(groups[key], key=lambda st: (len(st), skey(st))))
 
-    # fill remaining budget breadth-first across classes (a 2nd representative each), small views first.
     for key in sorted(groups):
         rest = sorted(groups[key], key=lambda st: (len(st), skey(st)))
         for st in rest[1:]:
@@ -152,11 +143,10 @@ def build_curated_strategy_index(
     max_strategies: int = 40,
     max_views_per_strategy: int | None = None,
 ):
-    """Like ,,build_eimer_strategy_index'' but attaches composition plans to a bounded, curated
-    subset of strategies (,,_curate_strategy_subset''), the tractable path at n=4. Returns
-    ,,(dep_graph, {N<i>: strategy_with_plans})'' like ,,build_eimer_strategy_index''."""
-    # max_views bounds the per-strategy composition-variant blow-up (2^views covers). Default 4
-    # keeps the fully-deferred 4-singleton endpoint; override via EIMER_CURATED_MAX_VIEWS.
+    """Like `build_eimer_strategy_index` but attaches composition plans to a bounded, curated
+        subset of strategies (`_curate_strategy_subset`). Returns
+        `(dep_graph, {N<i>: strategy_with_plans})` like `build_eimer_strategy_index`.
+    """
     if max_views_per_strategy is None:
         max_views_per_strategy = int(os.environ.get("EIMER_CURATED_MAX_VIEWS", "4"))
     query_spec = query_spec or canonical_query_spec(config)
@@ -293,8 +283,7 @@ def _compile_n_strategy(
             or generate_sql_statements_for_cover is None
         ):
             raise RuntimeError(
-                "Composition-variant correctness requires the eimer package importable "
-                "on the server. Copy eimer/*.py before using --composition-variant-idx."
+                "Composition-variant correctness requires the eimer package to be importable."
             )
         variants = get_composition_variants(
             dep_graph,

@@ -1,6 +1,5 @@
 __pycache__/
 *.pyc
-.pytest_cache/
 out/
 results_*/
 results_bench/

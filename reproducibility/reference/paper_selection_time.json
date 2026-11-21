@@ -1,5 +1,4 @@
 {
- "note": "Selection times of the paper's run (Section 7.3), in seconds: median of five runs per query (complete_k6: one run, as it exceeded the limit of 300 s; clique-grow was not run on larger complete queries). Workload: N = 100,000 rows in 25 batches, every batch queried, type rate 0.05, selectivity 0.01. Server: Intel Xeon Silver 4314, single core.",
  "queries": {
   "chain_k3": {
    "clique_grow_s": 0.0024,

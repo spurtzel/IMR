@@ -1,20 +1,19 @@
-"""DuckDB runtime layer for the demo experiment drivers (the DuckDB twin of trino_exec).
+"""DuckDB runtime layer for the demo experiment drivers (the DuckDB counterpart of `trino_exec`).
 
-Loads a synthetic datagen frame into a DuckDB table and runs the two arms:
-  * baseline_streaming -- a caller-supplied stateless baseline (the SQL a
-                          MATCH_RECOGNIZE transpiler generated for the query; DuckDB
-                          has no native MATCH_RECOGNIZE), re-executed over the
+Loads a synthetic datagen frame into a DuckDB table and runs the two approaches:
+  * baseline_streaming -- a caller-supplied stateless baseline (a SELECT over
+                          `events_window`, e.g. the SQL a MATCH_RECOGNIZE transpiler
+                          generated for the query), re-executed over the
                           cumulative window per queried batch.
   * eimer_streaming    -- an EIMER cover, the shared per-batch protocol of
                           demo/eimer_arm.py, rendered for the DuckDB dialect.
 
-Measurement discipline pinned per connection in ,,connect'': single-threaded
-(SET threads = 1), join order pinned (SET disabled_optimizers = 'join_order': the
-cost-model-selected join order runs verbatim), and a client-side per-statement wall.
-No index structures exist on any table. Every arm runs an untimed warm-up pass
+`connect` sets the session to single-threaded (SET threads = 1), join order pinned
+(SET disabled_optimizers = 'join_order') and a client-side per-statement wall.
+No index structures exist on any table. By default every approach runs an untimed warm-up pass
 (identical statements, result discarded) before the timed pass.
 
-Both arms return full-tuple key sets on the final batch.
+Both approaches return full-tuple key sets on the final batch.
 """
 from __future__ import annotations
 
@@ -31,14 +30,11 @@ for _p in (str(REPO), str(REPO / "execution")):
 from duckdb_client import DuckDBClient, DuckDBClientError, DuckDBConnectionConfig, is_dnf  # noqa: E402
 from eimer.sql.backend import SqlDialect  # noqa: E402
 import eimer_arm  # noqa: E402
-from eimer_arm import b_unified_workload, build_cover_plan  # noqa: E402,F401  (re-exported)
+from eimer_arm import b_unified_workload, build_cover_plan  # noqa: E402,F401
 
-# Loadable column types; ekey (BIGINT equi key, DatagenConfig.equi) is optional and
-# frame-driven: present in the frame -> present in the table.
 _COL_TYPES = {"id": "BIGINT", "time": "TIMESTAMP(6)", "ts": "TIMESTAMP(6)",
               "primary_type": "VARCHAR", "etype": "VARCHAR", "lon": "DOUBLE",
               "lat": "DOUBLE", "ekey": "BIGINT"}
-# the relation name a baseline SQL must read: the arm re-points it at each cumulative window
 BASELINE_INPUT_VIEW = "events_window"
 
 
@@ -55,10 +51,10 @@ class DuckDBEngine(eimer_arm.Engine):
 
 def connect(database: str = ":memory:", threads: int = 1, timeout_s: int = 1800,
             memory_limit: str | None = None, pin_join_order: bool = True) -> DuckDBClient:
-    """Open a DuckDB client and pin the measurement discipline: single-threaded, join
-    order pinned, per-statement wall T (client-side interrupt), optionally a memory limit
-    (a statement outgrowing it is a DNF, not a killed process). ,,pin_join_order=False''
-    leaves DuckDB's join-order optimizer on (the emitted nesting is then advisory)."""
+    """Opens a DuckDB client with a single thread, pinned join order, a per-statement wall T
+        (client-side interrupt) and optionally a memory limit (a statement exceeding it is a DNF).
+        `pin_join_order=False` leaves DuckDB's join-order optimizer on.
+    """
     client = DuckDBClient(DuckDBConnectionConfig(database=database, threads=threads, memory_limit=memory_limit,
                                                  pin_join_order=pin_join_order))
     client.set_wall(timeout_s)
@@ -73,10 +69,10 @@ def drop_table(client, table: str) -> None:
 
 
 def load_frame(client, frame, table: str = "events") -> int:
-    """CREATE TABLE AS from the in-memory frame (DuckDB reads pandas frames natively, so
-    no literal rendering: bit-exact doubles and microsecond timestamps); the column set
-    is frame-driven (the 7 canonical columns, plus ekey when the equi predicate is on).
-    Returns the loaded row count (callers assert it equals len(frame))."""
+    """CREATE TABLE AS from the in-memory frame; the column set is
+        frame-driven (the 7 canonical columns, plus ekey when the equi predicate is on).
+        Returns the loaded row count.
+    """
     cols = [c for c in frame.columns if c in _COL_TYPES]
     drop_table(client, table)
     client.register_frame("_eimer_load_frame", frame[cols])
@@ -92,14 +88,15 @@ def load_frame(client, frame, table: str = "events") -> int:
 
 def baseline_streaming(client, baseline_sql: str, table, N, B, qb, key_cols, T, warmup=True,
                        total_wall_s: float | None = None):
-    """Stateless baseline arm: ,,baseline_sql'' (a SELECT over the relation
-    ,,events_window'', e.g. the transpiled MATCH_RECOGNIZE of the query) is re-executed
-    over the cumulative window id <= (b*N)//B on each queried batch (count(*) forces
-    full evaluation); the final batch pulls the full-tuple keys for the identity gate.
-    The wall T applies PER RE-EXECUTION; ,,total_wall_s'' (optional) bounds the arm's timed
-    total the same way (a DNF once the re-executions so far exceed it). With warmup (the
+    """Stateless baseline approach: `baseline_sql` (a SELECT over the relation
+    `events_window`, e.g. the transpiled MATCH_RECOGNIZE of the query) is re-executed
+    over the cumulative window id <= (b*N)//B on each queried batch; the final batch pulls
+    the full-tuple keys for the identity check.
+    The wall T applies per re-execution; `total_wall_s` (optional) bounds the approach's timed
+    total (a DNF once the re-executions so far exceed it). With warmup (the
     default), the whole workload first runs once untimed. Returns (total_ms, final_count,
-    final_tuple_set, meta), or (None, None, None, meta) on a wall DNF."""
+    final_tuple_set, meta), or (None, None, None, meta) on a wall DNF.
+    """
     if warmup:
         warm = baseline_streaming(client, baseline_sql, table, N, B, qb, key_cols, T, warmup=False,
                                   total_wall_s=total_wall_s)
@@ -111,7 +108,7 @@ def baseline_streaming(client, baseline_sql: str, table, N, B, qb, key_cols, T, 
     tot = 0.0
     final = None
     tuples = None
-    per_scan = []  # (window_rows, ms) per re-execution
+    per_scan = []
     qbs = sorted(qb)
     keysel = ", ".join(c.lower() for c in key_cols)
     client.set_wall(T)
@@ -147,7 +144,7 @@ def baseline_streaming(client, baseline_sql: str, table, N, B, qb, key_cols, T, 
 
 def eimer_streaming(client, dep, toks, all_vars, wl, spec, table, N, B, qb, key_cols, T,
                     measure_state: bool = False, warmup: bool = True, total_wall_s: float | None = None):
-    """the shared EIMER arm (demo/eimer_arm.py) on this DuckDB client."""
+    """The shared EIMER approach (`demo/eimer_arm.py`) on this DuckDB client."""
     return eimer_arm.eimer_streaming(DuckDBEngine(client), dep, toks, all_vars, wl, spec, table,
                                      N, B, qb, key_cols, T, measure_state=measure_state, warmup=warmup,
                                      total_wall_s=total_wall_s)

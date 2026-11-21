@@ -1,5 +1,6 @@
-"""workload model: batch schedule, initial base size, arrival rate, and the
-independent/dependent selectivities the cost model reads."""
+"""Workload model: batch schedule, initial base size, arrival rate, and the
+independent/dependent selectivities the cost model reads.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -97,13 +98,14 @@ def make_workload(
     rho: float = 1000.0,
     window_rule: str = "pairwise",
 ) -> Workload:
-    """a workload is its sequence of batch sizes s=[s1,...,sB]; table size N is derived:
-    N = initial_base_size + sum(s); window after batch t = initial_base_size + sum(s[:t]) (== Workload.n_at(t)).
-    precedence:
-      1. batch_sizes=[...]           -> arbitrary non-uniform sequence.
-      2. (batch_size=, batches=)     -> uniform sequence [batch_size]*batches.
-      3. (total_events=N, batches=B) -> uniform split, remainder over the first batches (sum == N exactly).
-    forms 1/2 fix the per-batch size; form 3 couples batch size to N (= N/B)."""
+    """A workload is its sequence of batch sizes s=[s1,...,sB]; table size N is derived:
+        N = initial_base_size + sum(s); window after batch t = initial_base_size + sum(s[:t]) (== Workload.n_at(t)).
+        Forms:
+          1. batch_sizes=[...]           -> arbitrary non-uniform sequence.
+          2. (batch_size=, batches=)     -> uniform sequence [batch_size]*batches.
+          3. (total_events=N, batches=B) -> uniform split, remainder over the first batches (sum == N exactly).
+        Forms 1 and 2 fix the per-batch size; form 3 gives batch size N/B.
+    """
     if batch_sizes is not None:
         seq = tuple(int(x) for x in batch_sizes)
         if not seq:

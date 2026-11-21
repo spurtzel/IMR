@@ -41,12 +41,9 @@ def classify(stmt: str) -> str:
 
 
 def iter_statements_with_context(path: Path) -> Iterator[dict]:
-    """
-    Split SQL on semicolons not in single quotes.
-    Strips ,,-- ...'' line comments so semicolons in comments don't create statements.
-    Tracks ,,-- Strategy Sx'' and ,,-- Batch k'' comments as lightweight context labels.
-    Tracks ,,-- op_id: ...'' markers and validation events.
-    """
+    """Split SQL on semicolons outside single quotes. Strips `-- ...` line comments. Tracks
+    `-- Strategy Sx` and `-- Batch k` comments as context labels, and `-- op_id: ...` markers
+    and validation events."""
 
     strategy = "DATA"
     batch = 0

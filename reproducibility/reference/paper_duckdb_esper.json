@@ -1,5 +1,4 @@
 {
- "note": "Reference values of the paper's runs (server: Intel Xeon Silver 4314, 256 GB RAM, Ubuntu 22.04), per cell: the selected strategy, the number of matches, and the measured runtimes / memory. Picks, match counts and the data fingerprint are expected to reproduce exactly; runtimes and memory depend on the machine.",
  "duckdb": {
   "k3_n25000_b25_w60": {
    "pick": [
@@ -259,7 +258,7 @@
   }
  },
  "esper": {
-  "fig8s005": {
+  "n_panel": {
    "k4_n100000_b500_w1000": {
     "pick": [
      "A_B",
@@ -725,7 +724,7 @@
     }
    }
   },
-  "fig8s005n25k": {
+  "k_panel": {
    "k3_n25000_b25_w1000": {
     "pick": [
      "A_B",

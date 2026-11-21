@@ -1,10 +1,5 @@
 {
  "name": "taxi_Q3",
- "suite_metadata": {
-  "pattern_length": 3,
-  "shape": "chain",
-  "doc": "Surge run-up: three Midtown pickups with strictly rising fares, each within 20 min of the last."
- },
  "variables": [
   {
    "name": "A",

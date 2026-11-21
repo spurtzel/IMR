@@ -24,7 +24,6 @@ from query_registry import CANONICAL_QUERY_SPEC_NAME
 from query_spec_source import load_query_spec_from_args
 from sql_generator import DEFAULT_WORKLOAD_PROFILE, DEFAULT_WORKLOAD_SEED, WORKLOAD_PROFILES
 
-# Stats-only selectivity estimator behind the ,,b_unified'' mode.
 from mode_b_estimator import (
     Predicate,
     TableStats,
@@ -39,50 +38,37 @@ DEFAULT_EVENTS_TABLE = "events"
 BASE_ALIAS = "b"
 SCALAR_ALIAS = "value"
 
-# Predicate-shape matchers. The selectivity step classifies each dependent condition by
-# parsing its rendered SQL text; one regex per shape we know how to price.
 _FLOAT_RE = r"[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?"
 
-# ,,var.col = <literal>'': a qualified column equals a string or numeric literal.
 _QUALIFIED_LITERAL_EQ_RE = re.compile(
     rf"(?is)^\s*(?P<var>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?P<col>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?P<literal>'[^']*'|{_FLOAT_RE})\s*$"
 )
-# ,,<literal> = var.col'': the same equality with the operands reversed.
 _LITERAL_QUALIFIED_EQ_RE = re.compile(
     rf"(?is)^\s*(?P<literal>'[^']*'|{_FLOAT_RE})\s*=\s*(?P<var>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?P<col>[A-Za-z_][A-Za-z0-9_]*)\s*$"
 )
-# ,,left.col = right.col'': an equi-join between two qualified columns.
 _QUALIFIED_EQ_RE = re.compile(
     r"(?is)^\s*(?P<left_var>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?P<left_col>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*"
     r"(?P<right_var>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?P<right_col>[A-Za-z_][A-Za-z0-9_]*)\s*$"
 )
-# ,,subj.col BETWEEN anchor.col - d AND anchor.col + d'': a symmetric band of half-width d
-# around an anchor column (one shared ,,delta''; the asymmetric form is _OFFSET_BETWEEN_RE).
 _SPATIAL_BETWEEN_RE = re.compile(
     rf"(?is)^\s*(?P<subject_var>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?P<subject_col>[A-Za-z_][A-Za-z0-9_]*)\s+BETWEEN\s+"
     rf"(?P<anchor_var>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?P<anchor_col>[A-Za-z_][A-Za-z0-9_]*)\s*-\s*(?P<delta>{_FLOAT_RE})\s+AND\s+"
     rf"(?P=anchor_var)\s*\.\s*(?P=anchor_col)\s*\+\s*(?P=delta)\s*$"
 )
-# a SQL ,,INTERVAL 'value' unit'' literal (captures the value and the unit token).
 _INTERVAL_LITERAL_RE = re.compile(
     r"(?is)INTERVAL\s*'(?P<value>[^']+)'\s*(?P<unit>[A-Za-z]+)"
 )
-# ,,later.ts - anchor.ts <= INTERVAL 'v' unit'': a temporal window as a timestamp difference.
 _SUBTRACTION_WINDOW_RE = re.compile(
     r"(?is)\b(?P<later>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?:time|ts)\s*"
     r"-\s*(?P<anchor>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?:time|ts)\s*"
     r"<=?\s*INTERVAL\s*'(?P<value>[^']+)'\s*(?P<unit>[A-Za-z]+)"
 )
-# ,,later.ts BETWEEN anchor.ts AND anchor.ts + INTERVAL 'v' unit'': the BETWEEN form of the
-# same temporal window.
 _BETWEEN_WINDOW_RE = re.compile(
     r"(?is)\b(?P<later>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?:time|ts)\s+BETWEEN\s+"
     r"(?P<anchor_left>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?:time|ts)\s+AND\s+"
     r"(?P<anchor_right>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?:time|ts)\s*\+\s*"
     r"INTERVAL\s*'(?P<value>[^']+)'\s*(?P<unit>[A-Za-z]+)"
 )
-# the symmetric window form:
-#   abs(date_diff('millisecond', A.ts, B.ts)) <= 200
 _ABS_DATE_DIFF_WINDOW_RE = re.compile(
     r"(?is)\babs\s*\(\s*date_diff\s*\(\s*'(?P<unit>[A-Za-z]+)'\s*,\s*"
     r"(?P<left>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?:time|ts)\s*,\s*"
@@ -132,8 +118,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--canonical-query-sql", default=None)
     parser.add_argument("--query-spec", default=CANONICAL_QUERY_SPEC_NAME)
     parser.add_argument("--query-spec-file", type=Path, default=None)
-    # b_unified (stats-only estimator) is the DEFAULT selectivity source;
-    # c is the exact O(N^2) count, never a selection input.
     parser.add_argument("--mode", default="b_unified", choices=("c", "b_unified"))
     parser.add_argument("--events-table", default=DEFAULT_EVENTS_TABLE)
     parser.add_argument("--external-manifest-fingerprint", default=None)
@@ -231,10 +215,6 @@ class OffsetBetween:
     hi_offset: float
 
 
-# ,,subj.col BETWEEN anchor.col [+/- lo] AND anchor.col [+/- hi]'': asymmetric cross-column
-# band. Generalizes _SPATIAL_BETWEEN_RE; the two offsets are INDEPENDENT and either bound may
-# be absent (offset 0), so ,,B.id BETWEEN A.id AND A.id + 500'' matches with lo=0, hi=500.
-# Same anchor var/col on both bounds.
 _OFFSET_BETWEEN_RE = re.compile(
     rf"(?is)^\s*(?P<subject_var>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?P<subject_col>[A-Za-z_][A-Za-z0-9_]*)\s+BETWEEN\s+"
     rf"(?P<anchor_var>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?P<anchor_col>[A-Za-z_][A-Za-z0-9_]*)"
@@ -253,9 +233,9 @@ def _signed_offset(sign, mag) -> float:
 
 
 def parse_offset_between(expression: str) -> "OffsetBetween | None":
-    """Parse ,,b.col BETWEEN a.col+lo AND a.col+hi'' into an OffsetBetween, or None.
+    """Parses `b.col BETWEEN a.col+lo AND a.col+hi` into an OffsetBetween, or None.
 
-    Offsets are independent and either may be absent (offset 0).
+        Offsets are independent and either may be absent (offset 0).
     """
     match = _OFFSET_BETWEEN_RE.match(expression)
     if match is None:
@@ -399,7 +379,6 @@ def _mode_c_pair_count_sql(
 def _is_temporal_ordering_predicate(expression: str, left_var: str, right_var: str) -> bool:
     left = re.escape(left_var.lower())
     right = re.escape(right_var.lower())
-    # pure temporal ordering ,,X.ts < Y.ts'' between the two variables (either direction).
     pattern = re.compile(
         rf"(?is)^\s*\(?\s*(?:{left}|{right})\s*\.\s*(?:time|ts)\s*<\s*(?:{left}|{right})\s*\.\s*(?:time|ts)\s*\)?\s*$"
     )
@@ -471,31 +450,14 @@ def _filtered_ndv(
     )
 
 
-# --------------------------------------------------------------------------- #
-# mode b_unified: the stats-only selectivity producer. Gathers coarse per-column stats
-# ({low, high, ndv, nulls} in one aggregate SELECT) and prices every predicate by a closed
-# form, emitting the {kind:constant} / {kind:window} payload the cost model reads.
-#
-# Predicate conventions (consistent with mode c so the cost model does not double-count):
-#   * pure ts-ordering ,,X.ts < Y.ts''  -> sigma 1.0 (ordering cardinality is priced
-#                                          structurally by the cost model).
-#   * real INTERVAL / date_diff window  -> deferred {kind:window, w}.
-#   * everything else (equality, band, offset band, cross-column inequality) -> a constant.
-# Independent (family-A) atoms are priced from the same stats, combined by independence.
-# --------------------------------------------------------------------------- #
-
-# Independent family-A atoms: ,,var.col OP literal'' and ,,var.col BETWEEN lit AND lit''.
 _INDEP_CMP_RE = re.compile(
     rf"(?is)^\s*(?P<var>[A-Za-z_]\w*)\s*\.\s*(?P<col>[A-Za-z_]\w*)\s*"
     rf"(?P<op><=|>=|<>|!=|<|>|=)\s*(?P<lit>'[^']*'|true|false|{_FLOAT_RE})\s*$"
 )
-# ,,var.col BETWEEN lo AND hi'': a single-column numeric range (family-A independent).
 _INDEP_BETWEEN_RE = re.compile(
     rf"(?is)^\s*(?P<var>[A-Za-z_]\w*)\s*\.\s*(?P<col>[A-Za-z_]\w*)\s+BETWEEN\s+"
     rf"(?P<lo>{_FLOAT_RE})\s+AND\s+(?P<hi>{_FLOAT_RE})\s*$"
 )
-# Dependent cross-column comparison ,,var.col OP var.col'' (OP excludes '=', which is the
-# EQUALITY path; the band path uses BETWEEN). Longest operators first.
 _DEP_CMP_RE = re.compile(
     r"(?is)^\s*(?P<lvar>[A-Za-z_]\w*)\s*\.\s*(?P<lcol>[A-Za-z_]\w*)\s*"
     r"(?P<op><=|>=|<>|!=|<|>)\s*(?P<rvar>[A-Za-z_]\w*)\s*\.\s*(?P<rcol>[A-Za-z_]\w*)\s*$"
@@ -503,10 +465,6 @@ _DEP_CMP_RE = re.compile(
 _INDEP_KIND = {"=": "eq", "<>": "neq", "!=": "neq", "<": "lt", "<=": "le", ">": "gt", ">=": "ge"}
 _DEP_KIND = {"<": "lt", "<=": "le", ">": "gt", ">=": "ge", "<>": "neq", "!=": "neq"}
 
-# One-sided offset inequality between two rows on ONE column: ,,<subj>.<col> OP <anchor>.<col> [+-] c''
-# (e.g. ,,B.total_amount > A.total_amount + 15''). It is the ,,offset_band'' kind with an open side:
-# ,,>''/,,>='' -> lo = c, hi = +inf; ,,<''/,,<='' -> lo = -inf, hi = c (the boundary itself has no mass for the
-# histogram estimate). The symmetric / offset BETWEEN spellings are covered by the band parsers.
 _OFFSET_CMP_RE = re.compile(
     rf"(?is)^\s*(?P<lvar>[A-Za-z_]\w*)\s*\.\s*(?P<lcol>[A-Za-z_]\w*)\s*(?P<op><=|>=|<|>)\s*"
     rf"(?P<rvar>[A-Za-z_]\w*)\s*\.\s*(?P<rcol>[A-Za-z_]\w*)\s*(?P<sign>[+-])\s*(?P<mag>{_FLOAT_RE})\s*$"
@@ -514,7 +472,7 @@ _OFFSET_CMP_RE = re.compile(
 
 
 def parse_offset_inequality(expression: str) -> "Predicate | None":
-    """,,b.col OP a.col +/- c'' on the same column -> offset_band Predicate with one open side, else None."""
+    """`b.col OP a.col +/- c` on the same column -> offset_band Predicate with one open side, else None."""
     match = _OFFSET_CMP_RE.match(expression)
     if match is None or match.group("lcol").lower() != match.group("rcol").lower():
         return None
@@ -523,8 +481,6 @@ def parse_offset_inequality(expression: str) -> "Predicate | None":
     col = match.group("lcol")
     return Predicate(kind="offset_band", family="B", col=col, other=col, lo_offset=lo, hi_offset=hi)
 
-# Column-agnostic abs(date_diff('unit', X, Y)) <= value, the column NAMES do not affect the
-# window width, so (unlike the shared {time,ts}-restricted regexes) this works on any schema.
 _ABS_DATE_DIFF_VALUE_RE = re.compile(
     rf"(?is)date_diff\(\s*'(?P<unit>[A-Za-z]+)'\s*,[^)]*\)\s*\)?\s*<=?\s*(?P<value>{_FLOAT_RE})"
 )
@@ -533,14 +489,13 @@ _ABS_DATE_DIFF_VALUE_RE = re.compile(
 def _b_unified_window_seconds(text: str) -> "float | None":
     """Temporal-window half-width in seconds, column-name-agnostic (None if not a window).
 
-    The INTERVAL / abs(date_diff(...)) bound does not depend on the timestamp column's name,
-    so real-world tables (real_time/event_time) are handled. INTERVAL/date_diff is the window
-    signal: a column-bounded BETWEEN without INTERVAL is an offset band, not a window.
+        An INTERVAL / abs(date_diff(...)) bound is a window; a column-bounded BETWEEN without
+        INTERVAL is an offset band.
     """
     low = text.lower()
     if "interval" not in low and "date_diff" not in low:
         return None
-    fast = parse_temporal_window_seconds(text)  # canonical {time,ts} forms
+    fast = parse_temporal_window_seconds(text)
     if fast is not None:
         return fast
     dd = _ABS_DATE_DIFF_VALUE_RE.search(text)
@@ -555,11 +510,10 @@ def _b_unified_window_seconds(text: str) -> "float | None":
 
 
 def _b_unified_is_ordering(text: str, timestamp_columns) -> bool:
-    """,,X.c < Y.c'' with BOTH columns TIMESTAMP-typed -> pure temporal ordering (sigma 1.0).
+    """`X.c < Y.c` with both columns TIMESTAMP-typed -> pure temporal ordering (sigma 1.0).
 
-    Data-driven via ,,timestamp_columns'', so ,,A.real_time < B.real_time'' is recognized, not
-    only the synthetic {time,ts}. Only strict ,,<'' is ordering; ,,<=''/,,>=''/,,>'' on a
-    timestamp are value inequalities.
+        Timestamp columns come from `timestamp_columns`. Only strict `<` is ordering;
+        `<=`/`>=`/`>` on a timestamp are value inequalities.
     """
     m = _DEP_CMP_RE.match(text)
     if m is None or m.group("op") != "<":
@@ -568,7 +522,7 @@ def _b_unified_is_ordering(text: str, timestamp_columns) -> bool:
 
 
 def _adapt_independent_predicate(text: str) -> "Predicate | None":
-    """,,var.col OP literal'' / ,,var.col BETWEEN lit AND lit'' -> family-A Predicate, or None."""
+    """`var.col OP literal` / `var.col BETWEEN lit AND lit` -> family-A Predicate, or None."""
     between = _INDEP_BETWEEN_RE.match(text)
     if between is not None:
         return Predicate(kind="between", family="A", col=between.group("col"),
@@ -583,7 +537,7 @@ def _adapt_independent_predicate(text: str) -> "Predicate | None":
     if raw.startswith("'"):
         literal = raw[1:-1]
     elif raw.lower() in ("true", "false"):
-        literal = raw.lower() == "true"  # python bool; mode_b prices via ndv (2) / nf
+        literal = raw.lower() == "true"
     else:
         literal = float(raw)
     return Predicate(kind=kind, family="A", col=match.group("col"), literal=literal)
@@ -592,17 +546,15 @@ def _adapt_independent_predicate(text: str) -> "Predicate | None":
 def _adapt_dependent_predicate(text: str) -> "Predicate | None":
     """Cross-row predicate text -> family-B Predicate, or None.
 
-    Callers MUST have already peeled off pure ts-ordering and real INTERVAL/date_diff
-    windows; this handles equality, symmetric/offset bands, and cross-column inequality
-    (incl. ts ,,>=''/,,<=''/,,>'' that classify_condition_type lumps under TEMPORAL_WINDOW).
+        Callers have already handled pure ts-ordering and INTERVAL/date_diff
+        windows; this handles equality, symmetric/offset bands, and cross-column inequality
+        (including ts `>=`/`<=`/`>`).
     """
     classification = classify_condition_type(text)
     if classification == ConditionType.EQUALITY:
         parsed = parse_qualified_column_equality(text)
         if parsed is not None:
             return Predicate(kind="eq", family="B", col=parsed.left_col, other=parsed.right_col)
-        # Equality across two DIFFERENT columns (,,B.pu_location_id = A.do_location_id''): family-B eq with
-        # col != other; mode_b_enriched prices it from the two frequency sketches.
         cross = _QUALIFIED_EQ_RE.match(text)
         if cross is None:
             return None
@@ -617,12 +569,6 @@ def _adapt_dependent_predicate(text: str) -> "Predicate | None":
             return Predicate(kind="offset_band", family="B", col=offset.subject_col,
                              other=offset.subject_col, lo_offset=offset.lo_offset,
                              hi_offset=offset.hi_offset)
-        # Not a parseable band -> FALL THROUGH to the col-col inequality path: a
-        # spatial-named cross-column inequality (,,A.lon < B.lon'') is bucketed RANGE_SPATIAL
-        # by classify_condition_type (the LAT/LON/DISTANCE token check) but is really an
-        # inequality, not a band.
-    # OTHER / RANGE_SPATIAL-non-band, or a ts-comparison that is neither ,,<''-ordering nor a
-    # parseable window: cross-column inequality.
     match = _DEP_CMP_RE.match(text)
     if match is None:
         return parse_offset_inequality(text)
@@ -633,19 +579,16 @@ def _adapt_dependent_predicate(text: str) -> "Predicate | None":
 
 
 def _b_unified_stat_plan(dep_graph: DependencyGraph, timestamp_columns) -> tuple[list[str], set[str], set[str]]:
-    """Parse predicates once -> (all_columns, eq_role_columns, hist_role_columns).
+    """Parses predicates once -> (all_columns, eq_role_columns, hist_role_columns).
 
-    * all_columns       : every physical column the estimator needs BASE stats for.
-    * eq_role_columns   : columns in an equality / not-equal predicate; a top-K frequency
-                           sketch helps IF the column is categorical.
-    * hist_role_columns : columns in a family-A range (lt/le/gt/ge/between) or a dependent
-                           band / offset_band; an equi-depth histogram helps IF the column is
-                           numeric. Family-B col-col inequality is EXCLUDED (the estimator
-                           uses the analytic low/high form, so a histogram there would be
-                           gathered but unused).
+        * all_columns       : every physical column the estimator needs base stats for.
+        * eq_role_columns   : columns in an equality / not-equal predicate (top-K frequency
+                               sketch if the column is categorical).
+        * hist_role_columns : columns in a family-A range (lt/le/gt/ge/between) or a dependent
+                               band / offset_band (equi-depth histogram if the column is
+                               numeric). Family-B col-col inequality is excluded.
 
-    Raises on any in-scope predicate the adapter cannot parse, so coverage gaps surface
-    rather than silently producing a wrong selectivity.
+        Raises on any in-scope predicate the adapter cannot parse.
     """
     all_cols: set[str] = set()
     eq_cols: set[str] = set()
@@ -686,9 +629,9 @@ def _compute_b_unified_independent(dep_graph: DependencyGraph, stats: TableStats
     for variable in dep_graph.variables:
         selectivity = 1.0
         for predicate in dep_graph.vertices[variable].independent_predicates:
-            parsed = _adapt_independent_predicate(predicate.text)  # validated in the column pass
+            parsed = _adapt_independent_predicate(predicate.text)
             value = _unified_estimate(parsed, stats, profile="auto")
-            if value != value:  # NaN -> unknown; conservatively no filtering for this conjunct
+            if value != value:
                 continue
             selectivity *= value
         independent[variable] = max(0.0, min(1.0, selectivity))
@@ -711,7 +654,7 @@ def _b_unified_edge_components(dep_graph: DependencyGraph, edge, stats: TableSta
         if parsed is None:
             raise ValueError(f"b_unified: unsupported dependent predicate: {text!r}")
         value = _unified_estimate(parsed, stats, profile="auto")
-        if value != value:  # NaN
+        if value != value:
             raise ValueError(f"b_unified: estimate is unknown (NaN) for dependent predicate: {text!r}")
         components.append({"kind": "constant", "value": float(value)})
     return components
@@ -728,14 +671,9 @@ def _compute_b_unified_payload(
     if total_rows == 0:
         raise ValueError("events table is empty; populate it before computing selectivities")
 
-    # Data-driven timestamp set (the table may name its TIMESTAMP column anything:
-    # real_time, event_time, so ordering detection must not be restricted to {time,ts}).
     _str_cols, _num_cols, ts_cols = _classify_column_types(client, table)
     columns, eq_cols, hist_cols = _b_unified_stat_plan(dep_graph, ts_cols)
     if columns:
-        # gather the enriched catalog (top-K frequency for categorical equality columns,
-        # equi-depth histograms for numeric range/band columns); operators on a column that
-        # lacks a sketch fall back to the analytic form.
         stats = _unified_gather_stats(columns, client, table, enriched=True,
                                       eq_columns=eq_cols, hist_columns=hist_cols)
     else:

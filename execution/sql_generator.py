@@ -17,12 +17,7 @@ from eimer.query.query_spec import (
     query_spec_to_match_recognize_sql,
 )
 from eimer.sql.backend import backend_for
-from eimer.sql.sql_dialect import (
-    SqlDialect,
-    ordered_join_hint,
-    rewrite_sql,
-    set_diff_keyword,
-)
+from eimer.sql.sql_dialect import SqlDialect
 
 WORKLOAD_PROFILES = (
     "deterministic_grid_default",
@@ -98,7 +93,6 @@ def _batch_sizes(
 
 
 def _bucket_expr(id_expr: str, *, seed: int, salt: int, cycle: int = 1_000_000) -> str:
-    # Deterministic integer hash stream; salt varies the coefficients so event type and coordinates draw from different streams.
     multiplier = 1_103_515_245 + (salt * 2_654_435_761 % 1_000_000_007)
     increment = 12_345 + salt * 97_531 + seed * 214_013
     return f"mod(({id_expr}) * {multiplier} + {increment}, {cycle})"
@@ -334,7 +328,7 @@ def normalize_query_batches(
     query_batches: Collection[int] | None,
     batch_count: int,
 ) -> tuple[int, ...]:
-    """Normalize 1-based query batches for benchmark SQL rendering."""
+    """Normalizes 1-based query batches for benchmark SQL rendering."""
 
     normalized = _normalize_core_query_batches(query_batches, batch_count)
     if normalized is None:
@@ -373,7 +367,7 @@ def _correctness_sql(
         f"SELECT '{strategy_id}', {batch}, 'diff_strat_minus_base', count(*)\n"
         "FROM (\n"
         "    SELECT * FROM strat_agg\n"
-        f"    {set_diff_keyword(dialect)}\n"
+        "    EXCEPT\n"
         f"    SELECT {columns}, c\n"
         f"    FROM {baseline_agg_table}\n"
         f"    WHERE batch = {batch}\n"
@@ -384,7 +378,7 @@ def _correctness_sql(
         f"    SELECT {columns}, c\n"
         f"    FROM {baseline_agg_table}\n"
         f"    WHERE batch = {batch}\n"
-        f"    {set_diff_keyword(dialect)}\n"
+        "    EXCEPT\n"
         "    SELECT * FROM strat_agg\n"
         ") d\n"
     )
@@ -416,7 +410,6 @@ def render_benchmark_sql(
     workload_seed: int = DEFAULT_WORKLOAD_SEED,
     external_events_fingerprint: str | None = None,
     dialect: SqlDialect = SqlDialect.TRINO,
-    pin_join_order: bool = True,
     batch_sizes: Sequence[int] | None = None,
 ) -> str:
     if not strategies:
@@ -440,7 +433,6 @@ def render_benchmark_sql(
         selectivity_m=selectivity_m,
     )
 
-    # batch_sizes gives arbitrary per-batch sizes; the scalar flags are the uniform/geometric shorthand for it. Either way the body below is list-driven.
     if batch_sizes is not None:
         batch_sizes = [int(size) for size in batch_sizes]
         if not batch_sizes or any(size <= 0 for size in batch_sizes):
@@ -487,17 +479,14 @@ def render_benchmark_sql(
     lines.append(f"DROP TABLE IF EXISTS {results_table};")
     if external_events_fingerprint is None:
         lines.append(f"DROP TABLE IF EXISTS {generated_events_table};")
-        # Invalidate any external-load marker: a stale generated_events_meta would let a later external run skip its load and benchmark the wrong dataset.
         lines.append(f"DROP TABLE IF EXISTS {generated_events_table}_meta;")
     lines.append("")
-    # the backend names the ,,rows'' column
-    rows_col = backend_for(dialect).rows_column_name()
     lines.append(
         f"CREATE TABLE {results_table} (\n"
         "    strategy VARCHAR,\n"
         "    batch INTEGER,\n"
         "    phase VARCHAR,\n"
-        f"    {rows_col} BIGINT\n"
+        "    rows BIGINT\n"
         ");"
     )
     lines.append("")
@@ -517,8 +506,6 @@ def render_benchmark_sql(
         lines.append(strip_trailing_semicolon(generated_events_sql) + ";")
         lines.append("")
     else:
-        # Table is preloaded by execution/load_external_events.py; fail fast if it does not match the manifest so a stale table cannot silently benchmark the wrong dataset.
-        # (The comment format must not match the runner's ,,-- Batch <digits>'' / ,,-- Strategy <token>'' context markers.)
         lines.append(f"-- EXTERNAL_EVENTS manifest_fingerprint={external_events_fingerprint}")
         guard = backend_for(dialect).fail_int_expr(
             f"{generated_events_table} does not match external manifest "
@@ -563,7 +550,6 @@ def render_benchmark_sql(
 
         for batch in range(1, len(batch_sizes) + 1):
             start, end = _batch_range(batch_sizes, batch)
-            # Standard ,,-- Batch <k>'' marker so run_benchmark.sh tracks baseline precompute under the right batch number.
             lines.append(f"-- Batch {batch} (baseline load)")
             lines.append(
                 f"INSERT INTO {baseline_events_table} SELECT * FROM {generated_events_table} "
@@ -651,8 +637,6 @@ def render_benchmark_sql(
                     strip_trailing_semicolon(update_sql),
                     watermark_table,
                 )
-                if pin_join_order:
-                    rendered = ordered_join_hint(rendered, dialect)
                 if cost_model_validation:
                     rendered = prepend_op_id_marker(rendered, strategy.cache_statement_op_ids[idx])
                 lines.append(rendered + ";")
@@ -667,8 +651,6 @@ def render_benchmark_sql(
                     lines.append(f"-- op_id: {strategy.compose_op_id}")
                 lines.append("CREATE TABLE composed AS")
                 _compose_sql = strip_trailing_semicolon(strategy.compose_sql)
-                if pin_join_order:
-                    _compose_sql = ordered_join_hint(_compose_sql, dialect)
                 lines.append(indent_sql(_compose_sql, 4))
                 lines.append(";")
 
@@ -728,5 +710,4 @@ def render_benchmark_sql(
 
     lines.append(f"SELECT * FROM {results_table} ORDER BY strategy, batch, phase;")
 
-    # Emit-time dialect rewrites over the assembled SQL (per-strategy SQL is pre-rendered Trino, so rewrites land here). TRINO = no-op.
-    return rewrite_sql("\n".join(lines).rstrip() + "\n", dialect)
+    return "\n".join(lines).rstrip() + "\n"

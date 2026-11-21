@@ -2,11 +2,11 @@
 """Selection time (Section 7.3 of the paper): the time clique-grow and its seed, the edge cover, need to select a
 materialization strategy, over the pattern length k for four topologies (chain, star, cycle, complete).
 
-No engine is involved. The queries are those of evaluation_queries/7.3_plan_selection/selection_time/. The workload is
-fixed: N = 100,000 rows in 25 batches, every batch queried, every type at 5 % of the rows and a selectivity of 0.01 per
-dependent condition (constants, no table is read). Per query, ,,select_clique_grow_plan'' and
-,,select_edge_cover_plan'' run REPS times each and the median is reported. A selection that takes longer than LIMIT is
-not repeated, and clique-grow is not run for larger k of that topology; the edge cover is.
+No engine is involved. The queries are those of evaluation_queries/7.3_plan_selection/selection_time/. The workload:
+N = 100,000 rows in 25 batches, every batch queried, every type at 5 % of the rows and a selectivity of 0.01 per
+dependent condition. Per query, `select_clique_grow_plan` and `select_edge_cover_plan` run REPS times each and the
+median is reported. A selection that takes longer than LIMIT is not repeated, and clique-grow is not run for larger k
+of that topology.
 
   selection_time.py --results-dir <dir>     one record per query, then summary.md and summary.json
   selection_time.py --list                  the queries of the current settings
@@ -15,7 +15,7 @@ Settings (environment):
   EIMER_REPRO_SEL_KS=3,4,5,6,7,8            pattern lengths of chain, star and cycle
   EIMER_REPRO_SEL_COMPLETE_KS=3,4,5         pattern lengths of the complete topology
   EIMER_REPRO_SEL_REPS=5                    runs per query and selector
-  EIMER_REPRO_SEL_LIMIT=300                 seconds, see above
+  EIMER_REPRO_SEL_LIMIT=300                 seconds
 """
 from __future__ import annotations
 
@@ -66,12 +66,12 @@ def cells() -> list:
 
 
 def tokens(cover, pos) -> list:
-    """a strategy as sorted view names (,,A_B''), the variables of a view in pattern order."""
+    """a strategy as sorted view names."""
     return sorted("_".join(sorted(v, key=lambda x: pos[x])) for v in cover)
 
 
 def timed(select, reps: int) -> dict:
-    """,,select'' run up to ,,reps'' times: median, minimum and maximum in seconds and the strategy of every run."""
+    """`select` run up to `reps` times: median, minimum and maximum in seconds and the strategy of every run."""
     seconds, picks = [], []
     for _ in range(reps):
         t0 = time.perf_counter()

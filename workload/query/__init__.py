@@ -1,1 +1,1 @@
-"""workload.query: campaign_spec_gen turns parameters into query specs."""
+"""workload.query: spec_gen turns parameters into query specs."""

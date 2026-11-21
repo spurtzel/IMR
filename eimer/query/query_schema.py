@@ -1,7 +1,6 @@
-"""schema helpers for restricted-model QuerySpec sql generation.
+"""Schema helpers for restricted-model QuerySpec sql generation.
 
-the QuerySpec event schema is the source of truth for columns carried through eimer
-view tables.
+The QuerySpec event schema defines the columns carried through eimer view tables.
 """
 
 from __future__ import annotations
@@ -17,12 +16,12 @@ class QuerySchemaError(ValueError):
 
 
 def _event_schema_map(spec: QuerySpec) -> dict[str, str]:
-    """lower-cased event column name -> sql type."""
+    """Lower-cased event column name -> sql type."""
     return {column.name.lower(): column.sql_type for column in spec.event_schema}
 
 
 def event_column_type(spec: QuerySpec, column_name: str) -> str:
-    """Return the SQL type for an event column declared by ,,spec''."""
+    """Return the SQL type for an event column declared by `spec`."""
 
     schema = _event_schema_map(spec)
     try:
@@ -34,7 +33,7 @@ def event_column_type(spec: QuerySpec, column_name: str) -> str:
 
 
 def _variable_for_name(spec: QuerySpec, variable: str):
-    """the VariableSpec named ,,variable'', or raise."""
+    """The VariableSpec named `variable`, or raises."""
     for item in spec.variables:
         if item.name == variable:
             return item
@@ -42,7 +41,7 @@ def _variable_for_name(spec: QuerySpec, variable: str):
 
 
 def _strip_carried_column_decorators(column_name: str) -> str:
-    """strip first_/last_ (and count) decorators back to the underlying event column."""
+    """Strips first_/last_ (and count) decorators back to the underlying event column."""
     if column_name in {"first_id", "last_id"}:
         return "id"
     if column_name in {"first_ts", "last_ts"}:
@@ -56,11 +55,11 @@ def _strip_carried_column_decorators(column_name: str) -> str:
 
 
 def variable_output_column_type(spec: QuerySpec, variable: str, output_column: str) -> str:
-    """Resolve a variable-carried output column to a SQL type.
+    """Resolves a variable-carried output column to a SQL type.
 
-    ,,output_column'' may be an event column name (,,time''), a view-style
-    variable-prefixed name (,,A_time''), or a result-alias-style output-prefix
-    name (,,a_time'').
+        `output_column` may be an event column name (`time`), a view-style
+        variable-prefixed name (`A_time`), or a result-alias-style output-prefix
+        name (`a_time`).
     """
 
     variable_spec = _variable_for_name(spec, variable)
@@ -77,7 +76,7 @@ def variable_output_column_type(spec: QuerySpec, variable: str, output_column: s
 
 
 def variable_prefixed_column_type(spec: QuerySpec, prefixed_column: str) -> str:
-    """Resolve a view/result prefixed column such as ,,A_time'' or ,,a_id''."""
+    """Resolve a view/result prefixed column such as `A_time` or `a_id`."""
 
     measure_types = {measure.alias: measure.sql_type for measure in spec.measures if measure.sql_type}
     if prefixed_column in measure_types:
@@ -132,16 +131,5 @@ def cache_column_schema_for_view(
                 )
             )
     return tuple(schema)
-
-
-# fixed-width payload bytes per sql type, for the memory-aware selector's row-width estimate
-# (analysis-only; changes no emitted sql). VARCHAR/CHAR carry no precision in the event_schema, so a
-# live VARCHAR column makes the row width underivable (flagged, never guessed).
-_SQL_TYPE_BYTES = {
-    "BIGINT": 8, "LONG": 8, "INTEGER": 4, "INT": 4, "SMALLINT": 2, "TINYINT": 1,
-    "DOUBLE": 8, "REAL": 4, "FLOAT": 8, "DECIMAL": 8, "NUMERIC": 8,
-    "BOOLEAN": 1, "BOOL": 1, "BIT": 1,
-    "TIMESTAMP": 8, "DATE": 4, "TIME": 8,
-}
 
 

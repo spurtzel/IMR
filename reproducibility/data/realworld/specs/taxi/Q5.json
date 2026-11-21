@@ -1,10 +1,5 @@
 {
  "name": "taxi_Q5",
- "suite_metadata": {
-  "pattern_length": 3,
-  "shape": "chain",
-  "doc": "Airport return demand: a JFK pickup to a zone, then a trip from that zone back to JFK within 90 minutes.; out again: the commuting loop"
- },
  "variables": [
   {
    "name": "A",

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Plot the small-scale sensitivity results (demo/run_sensitivity.py).
+"""Plots the small-scale sensitivity results (`demo/run_sensitivity.py`).
 
 One 2x2 figure, one panel per OAT axis (k, N, B, sigma): total runtime (log) of
-native MATCH_RECOGNIZE vs the clique-grow pick. A DNF arm draws as an open marker
-at the wall (a measured lower bound, not a runtime); censored cells are left blank.
+native MATCH_RECOGNIZE vs the clique-grow pick. A DNF approach draws as an open marker
+at the wall; censored cells are left blank.
 
   python3 demo/plot_sensitivity.py --results out/sensitivity/results.json --out-dir out/sensitivity
 """

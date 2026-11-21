@@ -1,11 +1,10 @@
 """Exact achieved-selectivity measurement, mode_c-equivalent.
 
-Per edge, counts ordered pairs over the whole table INCLUDING the diagonal
-i=j whenever a row satisfies both endpoints' independent predicates: exactly
-what compute_selectivities.py's
-_mode_c_pair_count_sql cross join counts. Band bounds are computed the way the
-SQL computes them (anchor.lon - w and anchor.lon + w in float64, then inclusive
-comparisons), so the counts agree with Trino bit-for-bit.
+Per edge, counts ordered pairs over the whole table including the diagonal
+i=j whenever a row satisfies both endpoints' independent predicates, as the
+cross join in `compute_selectivities.py`'s `_mode_c_pair_count_sql`. Band bounds are
+computed as the SQL does (anchor.lon - w and anchor.lon + w in float64, then inclusive
+comparisons).
 """
 
 from __future__ import annotations
@@ -14,9 +13,6 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-
-# ---------------------------------------------------------------------------
-# Predicates (independent conditions)
 
 
 @dataclass(frozen=True)
@@ -34,7 +30,7 @@ class TypeEquals:
 @dataclass(frozen=True)
 class ColumnThreshold:
     column: str
-    op: str  # one of < <= > >=
+    op: str
     literal: float
 
     def mask(self, frame: pd.DataFrame) -> np.ndarray:
@@ -56,11 +52,6 @@ class ColumnThreshold:
 Predicate = TypeEquals | ColumnThreshold
 
 
-# ---------------------------------------------------------------------------
-# Edges (dependent conditions); anchor = the variable whose columns appear on
-# the right-hand side of BETWEEN (A in ,,B.lon BETWEEN A.lon - w AND A.lon + w'').
-
-
 @dataclass(frozen=True)
 class SpatialBandEdge:
     name: str
@@ -79,9 +70,9 @@ class SpatialBandEdge:
 class TemporalWindowEdge:
     """subject.col - anchor.col in [lower_micros, upper_micros], inclusive.
 
-    For ,,B.time BETWEEN A.time AND A.time + INTERVAL d'': [0, d_micros].
-    For ,,abs(date_diff('millisecond', A.ts, B.ts)) <= m'' (truncation toward
-    zero): [-(m*1000 + 999), m*1000 + 999].
+        For `B.time BETWEEN A.time AND A.time + INTERVAL d`: [0, d_micros].
+        For `abs(date_diff('millisecond', A.ts, B.ts)) <= m` (truncation toward
+        zero): [-(m*1000 + 999), m*1000 + 999].
     """
 
     name: str
@@ -108,10 +99,6 @@ class IdWindowEdge:
 Edge = SpatialBandEdge | TemporalWindowEdge | IdWindowEdge
 
 
-# ---------------------------------------------------------------------------
-# Exact pair counting
-
-
 class _Fenwick:
     def __init__(self, size: int) -> None:
         self._tree = np.zeros(size + 1, dtype=np.int64)
@@ -124,7 +111,7 @@ class _Fenwick:
             i += i & (-i)
 
     def prefix(self, count: int) -> int:
-        """Sum of the first ,,count'' positions."""
+        """Sum of the first `count` positions."""
         total = 0
         tree = self._tree
         i = count
@@ -144,10 +131,10 @@ def count_band_pairs(
 ) -> tuple[int, np.ndarray]:
     """Exact ordered-pair band count and per-anchor partner counts.
 
-    Replicates ,,subject.lon BETWEEN anchor.lon - w AND anchor.lon + w'' (and the
-    lat conjunct) with float64 bounds derived from the anchor, inclusive. A
-    lon-sorted sliding window over subjects with a Fenwick tree over lat ranks:
-    O((n_a + n_s) log n_s).
+        Counts `subject.lon BETWEEN anchor.lon - w AND anchor.lon + w` (and the
+        lat conjunct) with float64 bounds derived from the anchor, inclusive. A
+        lon-sorted sliding window over subjects with a Fenwick tree over lat ranks:
+        O((n_a + n_s) log n_s).
     """
     n_anchor, n_subject = len(anchor_lon), len(subject_lon)
     per_anchor = np.zeros(n_anchor, dtype=np.int64)
@@ -155,7 +142,6 @@ def count_band_pairs(
         return 0, per_anchor
 
     if half_width_lon is None:
-        # lat-only band: same sweep with axes swapped.
         return count_band_pairs(anchor_lat, anchor_lon, subject_lat, subject_lon, half_width_lat, None)
 
     lon_only = half_width_lat is None
@@ -166,8 +152,6 @@ def count_band_pairs(
     s_lat = subject_lat[subject_order]
 
     if not lon_only:
-        # Stable rank over subject lats: duplicates get consecutive unique
-        # Fenwick slots, and range queries by value remain exact.
         lat_argsort = np.argsort(s_lat, kind="stable")
         lat_sorted = s_lat[lat_argsort]
         unique_ranks = np.empty(n_subject, dtype=np.int64)
@@ -211,16 +195,13 @@ def count_window_pairs(
     upper: int,
 ) -> tuple[int, np.ndarray]:
     """Exact one-dimensional inclusive-window count on integer values:
-    subject - anchor in [lower, upper]."""
+        subject - anchor in [lower, upper].
+    """
     subject_sorted = np.sort(subject_values, kind="stable")
     lo_idx = np.searchsorted(subject_sorted, anchor_values + lower, side="left")
     hi_idx = np.searchsorted(subject_sorted, anchor_values + upper, side="right")
     per_anchor = (hi_idx - lo_idx).astype(np.int64)
     return int(per_anchor.sum()), per_anchor
-
-
-# ---------------------------------------------------------------------------
-# Reports
 
 
 @dataclass(frozen=True)
@@ -249,9 +230,9 @@ class EdgeReport:
 @dataclass(frozen=True)
 class Path2Report:
     """Joint statistic for two edges sharing a variable: the exact count of
-    (left-partner, shared, right-partner) triples over n_l * n_shared * n_r,
-    next to the independence product of the two pair sigmas; their ratio
-    measures the higher-order dependence between the two edges."""
+        (left-partner, shared, right-partner) triples over n_l * n_shared * n_r,
+        next to the independence product of the two pair sigmas.
+    """
 
     name: str
     triples: int
@@ -291,11 +272,8 @@ def _count_edge(frame: pd.DataFrame, edge: Edge) -> tuple[int, np.ndarray, np.nd
             edge.half_width_lon,
             edge.half_width_lat,
         )
-        diagonal_satisfies = True  # |delta| = 0 always within a band
+        diagonal_satisfies = True
     elif isinstance(edge, TemporalWindowEdge):
-        # Bounds are in microseconds; normalize the column's resolution before
-        # the int64 cast (a datetime64[ns] frame would otherwise yield
-        # nanosecond ticks and shrink the window 1000x).
         anchor_values = anchors[edge.column].to_numpy().astype("datetime64[us]").astype("int64")
         subject_values = subjects[edge.column].to_numpy().astype("datetime64[us]").astype("int64")
         matching, per_anchor = count_window_pairs(anchor_values, subject_values, edge.lower_micros, edge.upper_micros)
@@ -323,8 +301,6 @@ def verify_edge(frame: pd.DataFrame, edge: Edge) -> EdgeReport:
         off_matching = matching - (n_overlap if diagonal_satisfies else 0)
         off_diagonal_sigma = off_matching / (total_pairs - n_overlap)
 
-    # Two-sample U-statistic SD: anchor-side + subject-side conditional-
-    # proportion variances (the subject side needs the role-swapped count).
     per_subject, _, _ = _per_row_counts(frame, edge, role="subject")
     sd = float(np.sqrt(_one_sided_variance(per_anchor, n_subject) + _one_sided_variance(per_subject, n_anchor)))
 
@@ -379,9 +355,9 @@ def _per_row_counts(frame: pd.DataFrame, edge: Edge, *, role: str) -> tuple[np.n
 def verify_path2(frame: pd.DataFrame, left: Edge, right: Edge, shared_role: tuple[str, str]) -> Path2Report:
     """Exact triple count for two edges sharing a variable.
 
-    shared_role gives the shared variable's role in (left, right), each
-    'anchor' or 'subject'. joint = sum over shared rows of
-    cnt_left * cnt_right / (n_left_other * n_shared * n_right_other).
+        shared_role gives the shared variable's role in (left, right), each
+        'anchor' or 'subject'. joint = sum over shared rows of
+        cnt_left * cnt_right / (n_left_other * n_shared * n_right_other).
     """
     left_counts, left_mask, n_left_other = _per_row_counts(frame, left, role=shared_role[0])
     right_counts, right_mask, n_right_other = _per_row_counts(frame, right, role=shared_role[1])
@@ -406,8 +382,8 @@ def verify_path2(frame: pd.DataFrame, left: Edge, right: Edge, shared_role: tupl
 
 def shared_variable_pairs(edges):
     """Edge pairs sharing an endpoint predicate, tagged with the shared
-    variable's role per side, for the path-2 joint statistics the manifest
-    reports."""
+        variable's role per side, for the path-2 joint statistics.
+    """
     pairs = []
     for i, left in enumerate(edges):
         for right in edges[i + 1 :]:

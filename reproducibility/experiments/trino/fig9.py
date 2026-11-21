@@ -9,16 +9,16 @@ after every batch. Two panels:
   B   number of batches at W = 1,000 ms, sigma 0.05, for two table sizes  B = 1 .. 25 at N = 25k and 50k
       (EIMER_REPRO_FIG9_BW sets another window for this panel)
 
-Arms (same Iceberg table, one after the other, single-threaded, join reordering off, no warm-up of the approaches):
+Approaches (same Iceberg table, single-threaded, join reordering off):
   mr         native MATCH_RECOGNIZE over the accumulated table, the window also stated on the gap variable
   prefilter  the join-based prefilter (prefilter.py) in front of the same MATCH_RECOGNIZE, re-run per query; all
              subsequences that contain the first and last variable are executed, the fastest is reported
-  eimer      clique-grow's pick: per-batch view updates + the composed query; as the baselines read the whole table
-             per query, EIMER is charged for writing each batch into its staging tables as well
+  eimer      clique-grow's pick: per-batch view updates + the composed query; EIMER is charged for writing each
+             batch into its staging tables
 
-Gates: prefilter == mr and eimer == mr on full tuples (against eimer where native MR does not finish); the number of
+Checks: prefilter == mr and eimer == mr on full tuples (against eimer where native MR does not finish); the number of
 matches equals the paper's where recorded. A baseline that did not finish at a smaller B of the same table is not
-run again at larger B.
+run at larger B.
 
 Axis values and limits (environment):
   EIMER_REPRO_FIG9_NW=10000   EIMER_REPRO_FIG9_SIGMAS=0.05,0.02   EIMER_REPRO_FIG9_WS=200,500,1000,2000
@@ -43,9 +43,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import trino_lib as tl  # noqa: E402  (wires the repository onto sys.path)
+import trino_lib as tl  # noqa: E402
 import prefilter as pf  # noqa: E402
-import common  # noqa: E402  (demo/common.py)
+import common  # noqa: E402
 from workload.data.datagen import BandTarget, DatagenConfig, SpatialConfig, TemporalConfig, generate_events  # noqa: E402
 from eimer.query.query_spec import load_query_spec_file, query_spec_to_dependency_graph  # noqa: E402
 from eimer.selection.plan_selection_clique_grow import select_clique_grow_plan  # noqa: E402
@@ -55,8 +55,8 @@ from eimer.models import make_view  # noqa: E402
 from selectivity_payload import parse_selectivities_payload  # noqa: E402
 
 K = 4
-HW_LON, HW_LAT = 0.05, 0.02          # the query's band
-RARE, COMMON = 0.01, 0.10            # type rates: first and last pattern type (unless set) / all others
+HW_LON, HW_LAT = 0.05, 0.02
+RARE, COMMON = 0.01, 0.10
 FIRST_RATE = tl.env_list("EIMER_REPRO_FIG9_FIRST_RATE", (RARE,), float)[0]
 LAST_RATE = tl.env_list("EIMER_REPRO_FIG9_LAST_RATE", (RARE,), float)[0]
 RATES_TAG = "" if (FIRST_RATE, LAST_RATE) == (RARE, RARE) else f"_f{FIRST_RATE:g}_l{LAST_RATE:g}"
@@ -74,7 +74,7 @@ NBS = tl.env_list("EIMER_REPRO_FIG9_NBS", (25_000, 50_000))
 BS = tl.env_list("EIMER_REPRO_FIG9_BS", (1, 2, 5, 10, 25))
 B_PANEL = dict(w_ms=tl.env_list("EIMER_REPRO_FIG9_BW", (1000,))[0], sigma=0.05)
 W_PANEL = dict(batches=tl.env_list("EIMER_REPRO_FIG9_WB", (10,))[0])
-PANELS = [p for p in os.environ.get("EIMER_REPRO_FIG9_PANELS", "W,B").replace(" ", "").split(",") if p]   # run only these panels
+PANELS = [p for p in os.environ.get("EIMER_REPRO_FIG9_PANELS", "W,B").replace(" ", "").split(",") if p]
 
 
 def cell_name(c: dict) -> str:
@@ -82,7 +82,7 @@ def cell_name(c: dict) -> str:
 
 
 def check_table(n: int, sigma: float):
-    """the generator calibrates the band selectivity on the rarest type and needs 100 expected pairs there."""
+    """checks the table size."""
     rarest = min(FIRST_RATE, LAST_RATE, COMMON)
     expected = n * n * rarest * rarest * sigma
     if expected < 100:
@@ -91,7 +91,7 @@ def check_table(n: int, sigma: float):
 
 
 def cells() -> list:
-    """the W panel, then the B panel per table size with B ascending (the order the censoring rule needs)."""
+    """the workloads in execution order."""
     out: dict = {}
     for s in (SIGMAS if "W" in PANELS else []):
         check_table(NW, s)
@@ -123,7 +123,7 @@ def make_frame(n: int, sigma: float):
 
 
 def chain_windowed_spec(k: int, w_ms: int) -> dict:
-    """the windowed chain over V0..V<k-1> (structure of the stored chain query; the window in the range form)."""
+    """the windowed chain query."""
     base = json.loads((common.SPEC_DIR / f"q{k}_chain_rare_spatial.json").read_text())
     names = [f"V{i}" for i in range(k)]
     spec = {key: base[key] for key in ("event_schema", "id_column", "time_column", "ts_column", "order_by", "row_output",

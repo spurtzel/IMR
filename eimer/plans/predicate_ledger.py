@@ -1,9 +1,7 @@
 """scoped predicate-placement ledger for EIMER execution plans.
 
 predicate specs are global facts from the dependency graph; placements record where each
-predicate is applied or satisfied (per update target, in composition, in post-filter). the
-ledger records a fixed placement policy; it does not search over alternatives.
-"""
+predicate is applied or satisfied (per update target, in composition, in post-filter)."""
 
 from __future__ import annotations
 
@@ -206,11 +204,9 @@ def validate_predicate_ledger_against_evaluation_plan(
     ledger: PredicateLedger,
     evaluation_plan: EvaluationPlan,
 ) -> Tuple[PredicateLedgerConsistencyIssue, ...]:
-    """check that ledger placements correspond to lowered plan operators.
-
-    the checks are structural and SQL-neutral: each lowered ,,JoinOp.structural_predicates''
-    entry has a structural placement, and placements point only at known operators.
-    """
+    """check that ledger placements correspond to lowered plan operators: each lowered
+    `JoinOp.structural_predicates` entry has a structural placement, and placements point only
+    at known operators."""
 
     issues: list[PredicateLedgerConsistencyIssue] = []
     specs_by_id = ledger.specs_by_id

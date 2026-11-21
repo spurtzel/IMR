@@ -1,22 +1,22 @@
-"""Single-run orchestrator: experiment.yaml + environment.yaml -> one run.
+r"""Single-run orchestrator: experiment.yaml + environment.yaml -> one run.
 
     python3 runner/run.py \
         --experiment demo/configs/demo_experiment.yaml \
         --environment demo/configs/demo_environment.yaml \
         --out-dir <per-experiment output dir>
 
-Flow: VALIDATE (reject illegal combos, naming the violated constraint) -> MATERIALIZE
-(spec + dataset) -> ORCHESTRATE (load -> sigma -> select -> execute the rank-1 pick) ->
-COLLECT (experiment_manifest.json + candidate_rows.csv). Config values are scalar.
+Flow: validate (illegal combinations are rejected, naming the violated constraint) -> materialize
+(spec + dataset) -> orchestrate (load -> sigma -> select -> execute the rank-1 pick) ->
+collect (experiment_manifest.json + candidate_rows.csv). Config values are scalar.
 
-Backends ,,trino'' and ,,memory'' (Trino's in-RAM catalog) both run the full spine. The
-backend is REQUIRED: a missing one fails loud in validation, never a silent fallback.
+Backends `trino` and `memory` (Trino's in-RAM catalog) both run the full flow. The
+backend is required: a missing one raises an error in validation.
 
-Every seed used is stamped into the manifest (the datagen seed is drawn and recorded when
+Every seed used is recorded in the manifest (the datagen seed is drawn and recorded when
 the config omits it).
 
-The expensive captures (QEP / correctness-vs-MR / mode-c ground truth) are opt-in;
-requesting them fails loud rather than silently no-oping.
+The QEP / correctness-vs-MR / mode-c captures are opt-in; requesting an unsupported
+combination raises an error.
 """
 
 from __future__ import annotations
@@ -40,8 +40,6 @@ from runner.schema import (  # noqa: E402
     ConfigError, EnvironmentConfig, ExperimentConfig, load_environment, load_experiment)
 from runner.validate import validate_environment, validate_experiment  # noqa: E402
 
-# Curation bounds for the strategy-catalog build on n>=4 specs: cap catalog SIZE,
-# not N-id numbering. Overridable via execution.caps.
 DEFAULT_CAPS = {"EIMER_CURATED_MAX_STRATEGIES": "16", "EIMER_CURATED_MAX_VIEWS": "4"}
 
 
@@ -65,8 +63,9 @@ def _run(cmd: list[str], log_path: Path, extra_env: dict | None = None) -> None:
 
 
 def _trino_env(env: EnvironmentConfig) -> dict[str, str]:
-    """Explicit Trino connection: config values first, ambient TRINO_* second, and a
-    hard failure if neither provides a value (no silent memory@localhost)."""
+    """Explicit Trino connection: config values first, ambient TRINO_* second; raises an
+        error if neither provides a value.
+    """
     conn = env.connection
     catalog = "memory" if env.backend == "memory" else conn.get("catalog") or os.environ.get("TRINO_CATALOG")
     values = {
@@ -83,27 +82,19 @@ def _trino_env(env: EnvironmentConfig) -> dict[str, str]:
     return values
 
 
-# --------------------------------------------------------------------------- #
-# Backend arms
-# --------------------------------------------------------------------------- #
-
 def _execute_trino(exp: ExperimentConfig, env: EnvironmentConfig, out: Path,
                    spec_path: Path, manifest_path: Path, workload_seed: int,
                    caps_env: dict[str, str]) -> dict:
     trino_env = _trino_env(env)
     logs = out / "logs"
     stream = exp.data.stream
-    # data.stream IS the execution schedule: forwarded verbatim as --batch-sizes to
-    # both select and execution, so the cost model prices exactly the schedule that runs.
     stream_csv = ",".join(str(size) for size in stream)
     total_events, batches = sum(stream), len(stream)
     fingerprint = json.loads(manifest_path.read_text(encoding="utf-8"))["fingerprint"]
 
-    # load (idempotent on fingerprint match)
     _run([sys.executable, "execution/load_external_events.py", "--manifest",
           str(manifest_path)], logs / "load.log", extra_env=trino_env)
 
-    # sigma on the LOADED table, bound to the dataset fingerprint
     sigma_path = out / f"selectivities_{exp.execution.selectivity_mode}.json"
     _run([sys.executable, "execution/compute_selectivities.py",
           "--mode", exp.execution.selectivity_mode,
@@ -112,7 +103,6 @@ def _execute_trino(exp: ExperimentConfig, env: EnvironmentConfig, out: Path,
           "--external-manifest-fingerprint", fingerprint,
           "--output", str(sigma_path)], logs / "sigma.log", extra_env=trino_env)
 
-    # select: pick the cover with the configured selector (clique_grow / edge_cover)
     rank1 = out / "rank1.jsonl"
     _run([sys.executable, "execution/select_cover.py",
           "--query-spec-file", str(spec_path),
@@ -122,11 +112,8 @@ def _execute_trino(exp: ExperimentConfig, env: EnvironmentConfig, out: Path,
           "--batch-sizes", stream_csv,
           "--descriptor-out", str(rank1)],
          logs / "select.log", extra_env={**trino_env, **caps_env})
-    # single-pick selection: the descriptor is the rank-1 pick (no ranked shortlist)
     shortlist_csv = shortlist_jsonl = rank1
 
-    # execute the pick on the loaded dataset; opt-in captures ride the same call
-    # (--with-correctness = per-batch native-MR full-tuple diff)
     exec_dir = out / "execution"
     cmd = [sys.executable, "execution/run_selected_plan_manifest.py",
            "--plan-descriptor-manifest", str(rank1),
@@ -142,7 +129,6 @@ def _execute_trino(exp: ExperimentConfig, env: EnvironmentConfig, out: Path,
     if exp.output.with_correctness:
         cmd += ["--with-correctness"]
     if exp.output.with_qep:
-        # one opt-in dumps both: the static distributed plan and EXPLAIN ANALYZE
         cmd += ["--dump-qep", "--dump-explain-analyze"]
     _run(cmd, logs / "execute.log", extra_env={**trino_env, **caps_env})
 
@@ -158,9 +144,10 @@ def _execute_trino(exp: ExperimentConfig, env: EnvironmentConfig, out: Path,
 
 def collect_trino_captures(rows: list[dict], exec_dir: Path, *, with_qep: bool,
                            with_correctness: bool) -> dict:
-    """Add the Trino-side capture columns to the summary rows and build the record's
-    ,,captures'' section. Memory peaks are captured by default; QEP/correctness only when
-    flagged."""
+    """Adds the Trino-side capture columns to the summary rows and builds the record's
+        `captures` section. Memory peaks are captured by default; QEP/correctness only when
+        flagged.
+    """
     captures: dict = {}
     for row in rows:
         run_dir = Path(row.get("run_dir") or exec_dir)
@@ -189,10 +176,6 @@ def collect_trino_captures(rows: list[dict], exec_dir: Path, *, with_qep: bool,
     return captures
 
 
-# --------------------------------------------------------------------------- #
-# The unified per-experiment record
-# --------------------------------------------------------------------------- #
-
 def _achieved_sigma(manifest_path: Path) -> dict:
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     verification = data.get("verification", {})
@@ -220,12 +203,10 @@ def _write_record(out: Path, exp_path: Path, env_path: Path, exp: ExperimentConf
         "dataset": {"manifest": str(manifest_path), "fingerprint": dataset["fingerprint"],
                     "total_rows": dataset["total_rows"],
                     "batch_sizes": dataset["batch_sizes"]},
-        # every seed used, always recorded:
         "seeds": {"datagen_seed": datagen_seed, "datagen_seed_was_drawn": seed_was_drawn,
                   "workload_seed": workload_seed},
         "achieved_sigma": _achieved_sigma(manifest_path),
         "selectivity_mode": exp.execution.selectivity_mode,
-        # opt-in captures actually taken this run (absent = cheap default path):
         "captures": result.get("captures", {}),
         "capture_flags": {"with_qep": exp.output.with_qep,
                           "with_correctness": exp.output.with_correctness,
@@ -235,8 +216,6 @@ def _write_record(out: Path, exp_path: Path, env_path: Path, exp: ExperimentConf
     (out / "experiment_manifest.json").write_text(json.dumps(manifest, indent=2),
                                                   encoding="utf-8")
 
-    # the core per-candidate row(s). Capture columns are non-empty only when their flag
-    # was on; memory columns are backend-dependent (empty = the backend does not offer it).
     rows = result.get("summary_rows") or []
     if rows:
         keep = ["selector_rank", "strategy_id", "ranking_profile_name", "ranking_score",
@@ -264,13 +243,12 @@ def run_experiment(exp_path: Path, env_path: Path, out: Path) -> int:
                           "is not supported; trino/memory run the 'all' schedule")
 
     out.mkdir(parents=True, exist_ok=True)
-    # caps keys are whitelist-validated in validate_experiment: forward them all.
     caps_env = dict(DEFAULT_CAPS)
     caps_env.update({k: str(v) for k, v in exp.execution.caps.items()})
 
     seed_was_drawn = exp.data.seed is None
     datagen_seed = draw_seed() if seed_was_drawn else exp.data.seed
-    workload_seed = 0  # scalar default; forwarded to the executor AND stamped
+    workload_seed = 0
 
     print(f"[1/5] materialize query spec ...", flush=True)
     spec_path = out / "query_spec.json"

@@ -1,4 +1,4 @@
-"""module entry point: ,,python -m eimer'' runs the cli."""
+"""module entry point: `python -m eimer` runs the cli."""
 from eimer.cli import main
 
 

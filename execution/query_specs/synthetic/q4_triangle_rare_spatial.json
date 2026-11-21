@@ -1,6 +1,5 @@
 {
   "name": "q4_triangle_rare_spatial",
-  "suite_metadata": {"pattern_length": 4, "shape": "triangle", "independent_selectivity_class": "rare", "dependent_predicate_strength": "canonical"},
   "variables": [
     {"name": "A", "output_prefix": "a", "independent_predicate_id": "A_type"},
     {"name": "B", "output_prefix": "b", "independent_predicate_id": "B_type"},

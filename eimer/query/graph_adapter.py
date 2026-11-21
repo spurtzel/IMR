@@ -197,19 +197,17 @@ def build_dependency_graph_from_json(path: str | Path) -> DependencyGraph:
 
 
 def schema_min_enabled() -> bool:
-    """schema-min kill switch (default on). set EIMER_DISABLE_SCHEMA_MIN=1 to revert to the
-    wide-view behavior where views carry every predicate-referenced column."""
+    """schema minimization, on by default: views carry only the columns that later conditions and the
+    result need. EIMER_DISABLE_SCHEMA_MIN=1 makes views carry every predicate-referenced column."""
     return os.environ.get("EIMER_DISABLE_SCHEMA_MIN", "").lower() not in ("1", "true", "yes")
 
 
 def collect_referenced_columns(dep_graph: DependencyGraph, *, minimize: bool | None = None) -> Dict[str, List[str]]:
-    """per-variable columns each view must carry: always id/ts, plus dependent-predicate and
-    MEASURES-referenced columns. under schema-min (the default) a column referenced ONLY by an
-    independent predicate is dropped, since that predicate runs on the base scan and the column is
-    dead in the view. minimize=False keeps the wide set (id/ts plus every predicate-referenced column)."""
+    """per-variable columns each view must carry: id/ts, dependent-predicate columns, and
+    MEASURES-referenced columns. under schema-min (the default) a column referenced only by an
+    independent predicate is dropped; `minimize=False` keeps every predicate-referenced column."""
     if minimize is None:
         minimize = schema_min_enabled()
-    # a qualified column reference ,,var.col''
     qualified_ref_re = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\.\s*([A-Za-z_][A-Za-z0-9_]*)\b")
     refs: Dict[str, set[str]] = {var: {"id", "ts"} for var in dep_graph.variables}
 
@@ -220,20 +218,15 @@ def collect_referenced_columns(dep_graph: DependencyGraph, *, minimize: bool | N
                 if var in refs:
                     refs[var].add(col)
 
-    # dependent-predicate columns: live (applied at compose, or when a multi-variable view is built)
     for edge in dep_graph.edges:
         _ingest(edge.dependent_conditions)
-    # MEASURES-referenced columns: live (projected into the result); (variable, attribute) from the IR
     for measure in dep_graph.measures:
         if measure.variable in refs and measure.attribute not in ("*",):
             refs[measure.variable].add(measure.attribute)
-    # independent-predicate columns: dead after the base scan -> keep ONLY when NOT minimizing
     if not minimize:
         for var in dep_graph.variables:
             _ingest(dep_graph.independent_conditions.get(var, []))
 
-    # Case-insensitive dedup: SQL folds UNQUOTED identifiers, so two case-variant refs to one column
-    # (measure C.G vs predicate C.g) would emit two view columns that collide at CTAS. Keep one per case-folded name.
     def _dedup_ci(cols: set) -> List[str]:
         kept: Dict[str, str] = {}
         for col in sorted(cols):

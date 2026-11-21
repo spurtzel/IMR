@@ -1,8 +1,6 @@
 """Dataset persistence: per-batch parquet files + manifest.json.
 
-The content fingerprint covers the logical column values, not file bytes,
-since parquet encodings are not stable across library versions.
-"""
+The content fingerprint covers the logical column values, not file bytes."""
 
 from __future__ import annotations
 
@@ -66,7 +64,7 @@ def _as_jsonable(value: Any) -> Any:
         return int(value)
     if isinstance(value, (np.floating,)):
         return float(value)
-    if isinstance(value, float) and value != value:  # NaN -> null
+    if isinstance(value, float) and value != value:
         return None
     return value
 

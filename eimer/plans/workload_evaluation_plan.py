@@ -1,10 +1,8 @@
 """workload-level introspection for fixed EIMER execution plans.
 
-,,EvaluationPlan'' is the reusable lowered program, independent of any concrete workload
-schedule. ,,WorkloadEvaluationPlan'' binds it to a workload and query schedule and exposes a
-per-batch ,,BatchProgram'' view. introspection-only: it does not execute SQL or change cost
-formulas.
-"""
+`EvaluationPlan` is the lowered program, independent of a workload schedule.
+`WorkloadEvaluationPlan` binds it to a workload and query schedule and exposes a per-batch
+`BatchProgram` view. it does not execute SQL."""
 
 from __future__ import annotations
 
@@ -56,10 +54,8 @@ class BatchProgram:
 class WorkloadEvaluationPlan:
     """a fixed execution plan bound to a workload and optional query schedule.
 
-    ,,query_batches=None'' means every 1-based batch is followed by composition and
-    post-filtering; an empty frozenset means update-only maintenance. no adaptive per-batch
-    strategy changes.
-    """
+    `query_batches=None` means every 1-based batch is followed by composition and
+    post-filtering; an empty frozenset means update-only maintenance."""
 
     evaluation_plan: EvaluationPlan
     query_batches: frozenset[int] | None

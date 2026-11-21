@@ -1,10 +1,5 @@
 {
  "name": "ecommerce_Q2",
- "suite_metadata": {
-  "pattern_length": 3,
-  "shape": "star",
-  "doc": "In-category comparison shopping within a price tier, then a purchase, in one session."
- },
  "variables": [
   {
    "name": "A",

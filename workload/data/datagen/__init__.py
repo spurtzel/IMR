@@ -1,12 +1,9 @@
 """External dataset generator for the EIMER benchmark.
 
-Generates the event stream as per-batch parquet files plus a manifest, with
-exact independent type rates and calibrated dependent (band) selectivities
-under the mode_c pair-count semantics.
+Generates the event stream as per-batch parquet files plus a manifest, with exact independent
+type rates and calibrated dependent (band) selectivities under the mode_c pair-count semantics.
 
-Requires numpy/pandas/pyarrow: kept outside eimer, whose runtime stays
-dependency-free.
-"""
+Requires numpy/pandas/pyarrow."""
 
 from workload.data.datagen.config import (
     BandTarget,

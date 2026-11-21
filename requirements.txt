@@ -1,23 +1,17 @@
-# Runtime dependencies for EIMER. Python 3.10 (this repo: 3.10.9).
+# Runtime dependencies for EIMER. Python 3.10 or newer.
 #
-# The core compiler + Trino client (eimer/, execution/cli.py, trino_client.py) are
-# pure standard library (HTTP over urllib), nothing to pin there.
+# The core compiler and Trino client (eimer/, execution/cli.py, trino_client.py) use only the standard library.
 #
-# The SYNTHETIC DATASET GENERATOR (workload/data/datagen)
-# DOES use third-party libraries, and datagen is bit-identical (manifest fingerprints / calibrated σ)
-# only under matching versions, so these are PINNED. Regenerating under a different numpy/pandas can
-# silently shift the achieved σ and break fingerprint joins.
+# Synthetic dataset generator (workload/data/datagen)
 numpy==2.2.1
 pandas==2.2.3
 pyarrow==24.0.0
 
-# The CONFIG RUNNER (runner/) reads experiment.yaml / environment.yaml (safe_load only).
+# Config runner (runner/)
 PyYAML==6.0.3
 
-# The figures (demo/plot_sensitivity.py, reproducibility/experiments/).
+# Figures (demo/plot_sensitivity.py, reproducibility/experiments/)
 matplotlib==3.10.0
 
-# The DUCKDB backend (backends/duckdb, execution/duckdb_client.py, demo/duckdb_exec.py).
-# Pinned: the transpiler baseline's generated SQL and DuckDB's optimizer settings are
-# version-specific.
+# DuckDB backend (backends/duckdb, execution/duckdb_client.py, demo/duckdb_exec.py)
 duckdb==1.5.5

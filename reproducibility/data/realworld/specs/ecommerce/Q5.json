@@ -1,10 +1,5 @@
 {
  "name": "ecommerce_Q5",
- "suite_metadata": {
-  "pattern_length": 5,
-  "shape": "chain",
-  "doc": "view, re-view, cart, re-view, purchase -- one user, one product"
- },
  "variables": [
   {
    "name": "A",

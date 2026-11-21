@@ -1,8 +1,8 @@
-"""lowering from a maintained strategy and composition cover to an ,,EvaluationPlan''.
+"""Lowering from a maintained strategy and composition cover to an `EvaluationPlan`.
 
-builds the update, composition, and post-filter operators (and their SQL) for a plan,
-then hashes the canonicalized result into a stable ,,plan_id''. all execution-plan paths
-converge on ,,build_evaluation_plan_for_cover''.
+Builds the update, composition, and post-filter operators (and their SQL) for a plan,
+then hashes the canonicalized result into a stable `plan_id`. The entry point is
+`build_evaluation_plan_for_cover`.
 """
 
 from __future__ import annotations
@@ -151,8 +151,6 @@ def fires_at(pattern: FiringPattern, batch_index: int, state_tape: Mapping[objec
     raise ValueError(f"Unsupported firing pattern kind: {pattern.kind}")
 
 
-
-
 class SourceRole(str, Enum):
     BASE_HISTORY = "BASE_HISTORY"
     CURRENT_BATCH = "CURRENT_BATCH"
@@ -191,8 +189,6 @@ class JoinOp:
     join_type: JoinType = JoinType.INEQ
     deferred_predicates: Tuple[str, ...] = ()
     operator_id: str = ""
-
-
 
 
 @dataclass(frozen=True)
@@ -316,24 +312,19 @@ def _compute_plan_id(plan: EvaluationPlan) -> str:
     return sha1(encoded.encode("utf-8")).hexdigest()
 
 
-
-
-
-
-
-
 def _build_update_tree_join_ops(
     source_tree: JoinTreeNode,
     target_label: str,
     source_aliases: Dict[View, str],
     dep_graph: DependencyGraph,
 ) -> Tuple[JoinOp, ...]:
-    """tree-order ,,join_ops'' for a bushy UPDATE source tree, one ,,JoinOp'' per inner node.
+    """Tree-order `join_ops` for a bushy update source tree, one `JoinOp` per inner node.
 
-    operands are merged source variable-sets (anchor is the left subtree, new the right), emitted
-    children before parents. only cross-side ts-ordering structural predicates are carried, so
-    ,,deferred_predicates'' stay empty and ,,join_type'' is ,,INEQ''; the SQL FROM is rendered
-    separately by ,,_emit_source_tree_node''."""
+        Operands are merged source variable-sets (anchor is the left subtree, new the right), emitted
+        children before parents. Only cross-side ts-ordering structural predicates are carried, so
+        `deferred_predicates` is empty and `join_type` is `INEQ`; the SQL FROM is rendered
+        by `_emit_source_tree_node`.
+    """
     positions = dep_graph.positions
     join_ops: list[JoinOp] = []
 
@@ -393,7 +384,6 @@ def _build_update_sql_parts(
     effective_sources = update_plan.effective_sources[target_view]
     last_source = update_plan.last_variable_source[target_view]
     update_mode = update_plan.update_mode_by_view.get(target_view, UpdateMode.JOIN)
-    # the batch-window prefix prune (sql_emitter): the same source restriction as the cover emitter
     prune_bounds = _prefix_prune_bounds(dep_graph) if prefix_prune else {}
     target_last_var = max(target_view, key=lambda var: positions[var])
 
@@ -506,8 +496,6 @@ def _build_update_sql_parts(
     )
 
     if source_tree is not None:
-        # bushy source tree: nested-subquery FROM; the dependent value predicates and the adjacent
-        # ts-sequence stay in the WHERE below, and join_ops carry the tree order as metadata.
         if set(source_tree.views) != set(effective_sources):
             raise ValueError("source_join_trees leaves must equal the build's effective sources")
         root_sql, _root_alias, _merged_view, var_to_alias = _emit_source_tree_node(
@@ -522,8 +510,6 @@ def _build_update_sql_parts(
     else:
         root, join_sequence = _canonical_source_join_sequence(effective_sources, positions)
 
-        # bands-in-ON (default on): attach each spanning dependent value predicate at the earliest
-        # JOIN ON where both of its variables are present.
         bands_in_on = _dependent_predicates_in_on_enabled()
         pending_dependent_edges = [
             edge
@@ -648,13 +634,14 @@ def _build_tree_join_ops(
     composition_plan: CompositionPlan,
     dep_graph: DependencyGraph,
 ) -> Tuple[JoinOp, ...]:
-    """encode a bushy ,,join_tree'' as ,,join_ops'' in tree topological order (children before
-    parents), one ,,JoinOp'' per inner tree node.
+    """Encodes a bushy `join_tree` as `join_ops` in tree topological order (children before
+        parents), one `JoinOp` per inner tree node.
 
-    a node's operands are merged variable-sets (,,anchor_view'' the left subtree's leaf variables,
-    ,,new_view'' the right subtree's). ,,join_type'' is EQUI when the two sides share a variable, else
-    INEQ; ,,deferred_predicates'' are the rendered ,,deferred_conditions'' whose endpoint leaves span
-    the node. the SQL comes from the tree renderer, not from here."""
+        A node's operands are merged variable-sets (`anchor_view` the left subtree's leaf variables,
+        `new_view` the right subtree's). `join_type` is EQUI when the two sides share a variable, else
+        INEQ; `deferred_predicates` are the rendered `deferred_conditions` whose endpoint leaves span
+        the node.
+    """
     positions = dep_graph.positions
     join_ops: list[JoinOp] = []
 
@@ -806,8 +793,6 @@ def _build_composition_op(
         )
 
     if composition_plan.join_tree is not None:
-        # bushy dispatch: operands are merged variable-sets in tree topological order; the
-        # left-deep block below only runs for join_tree=None plans.
         join_ops: list[JoinOp] = list(
             _build_tree_join_ops(composition_plan.join_tree, composition_plan, dep_graph)
         )
@@ -951,10 +936,8 @@ def build_evaluation_plan(
     batch_table: str = "events_batch",
     prefix_prune: bool = False,
 ) -> EvaluationPlan:
-    """build an ,,EvaluationPlan'' from index-based ,,composition_plan_idx''/,,update_plan_idx'' descriptors.
-
-    delegates to the core lowering ,,build_evaluation_plan_for_cover'' (below), through which all
-    lowering flows.
+    """Builds an `EvaluationPlan` from index-based `composition_plan_idx`/`update_plan_idx` descriptors
+        via `build_evaluation_plan_for_cover`.
     """
 
     if composition_plan_idx < 0 or composition_plan_idx >= len(strategy_with_plans.composition_plans):
@@ -992,14 +975,11 @@ def build_evaluation_plan_for_cover(
     composition_plan_idx_within_cover: int | None = None,
     prefix_prune: bool = False,
 ) -> EvaluationPlan:
-    """lower a maintained strategy with an explicit composition cover. ,,prefix_prune'' renders the
-    view updates with the batch-window prefix prune (the cover emitter applies it per dialect).
+    """Lowers a maintained strategy with an explicit composition cover. `prefix_prune` renders the
+        view updates with the batch-window prefix prune.
 
-    every execution-plan path converges here: index-based descriptors via
-    ,,build_evaluation_plan'' (above), and composition-variant descriptors / plan selection via
-    ,,build_evaluation_plan_for_composition_variant''. updates are built for every maintained view
-    in the materialization strategy; composition is built only over ,,composition_nodes'' so helper
-    views can accelerate updates without being query leaves.
+        Updates are built for every maintained view in the materialization strategy; composition is
+        built only over `composition_nodes`.
     """
 
     positions = dep_graph.positions

@@ -105,8 +105,6 @@ def _select_strategies(bundle: StrategyCatalogBundle, strategies_csv: str):
 
 
 def _validate_schema_contract(query_spec: QuerySpec, allowed_names: set[str] | None = None) -> None:
-    # Default names come from the synthetic generator's fixed schema; a loaded
-    # external dataset declares its own columns via the manifest's event_columns.
     generated_names = allowed_names or {"id", "time", "ts", "primary_type", "etype", "lon", "lat"}
     required_names = {column.name for column in query_spec.event_schema}
     missing = sorted(required_names - generated_names)
@@ -118,9 +116,9 @@ def _validate_schema_contract(query_spec: QuerySpec, allowed_names: set[str] | N
 
 
 def _load_external_events_manifest(args: argparse.Namespace) -> str | None:
-    """Validate the external-events manifest against the sizing args and return its
-    fingerprint. Must run after _apply_correctness_total_events; only the total row
-    count must match, since the batch schedule is a separate emit-sql axis.
+    """Validates the external-events manifest against the sizing args and returns its
+        fingerprint. Runs after `_apply_correctness_total_events`; only the total row
+        count must match.
     """
     manifest_path = getattr(args, "external_events_manifest", None)
     if manifest_path is None:
@@ -130,16 +128,12 @@ def _load_external_events_manifest(args: argparse.Namespace) -> str | None:
     total_rows = manifest.get("total_rows")
     if not fingerprint or not isinstance(total_rows, int):
         raise ValueError(f"external-events manifest {manifest_path} lacks fingerprint/total_rows")
-    # The fingerprint is interpolated into the rendered SQL stream guard; accept
-    # only sha256 hex.
     if not re.fullmatch(r"[0-9a-f]{64}", str(fingerprint)):
         raise ValueError(f"external-events manifest fingerprint is not a sha256 hexdigest: {fingerprint!r}")
     args.external_events_seed = manifest.get("seed")
     args.external_events_config = manifest.get("config")
     event_columns = manifest.get("event_columns")
     if event_columns is not None:
-        # event_columns is a list of name strings; tolerate the alternate
-        # [{"name": ...}, ...] dict form too.
         args.external_events_columns = {
             (entry["name"] if isinstance(entry, dict) else entry) for entry in event_columns
         }
@@ -162,7 +156,6 @@ def _load_external_events_manifest(args: argparse.Namespace) -> str | None:
     return str(fingerprint)
 
 
-
 def _parse_batch_sizes(raw: "str | None") -> "list[int] | None":
     """Comma list -> the native batch schedule; None passes the scalar flags through."""
     if raw is None or str(raw).strip() == "":
@@ -173,8 +166,9 @@ def _parse_batch_sizes(raw: "str | None") -> "list[int] | None":
     return sizes
 
 def _build_explicit_cover_workload(args, dep):
-    """rebuild the exact scoring workload the selection step used, from --selectivities and the
-    batch schedule, so the cover's bushy build_plan trees match the pick."""
+    """Rebuilds the scoring workload used by the selection step, from --selectivities and the
+        batch schedule.
+    """
     from selectivity_payload import load_selectivities, payload_rho
     from eimer.workload import make_workload
     selectivities, _mode = load_selectivities(Path(args.selectivities), dep)
@@ -222,7 +216,7 @@ def _emit_sql(args: argparse.Namespace) -> tuple[StrategyCatalogBundle, list[str
     _validate_schema_contract(query_spec, getattr(args, "external_events_columns", None))
     if getattr(args, "explicit_cover", None):
         return _emit_sql_explicit_cover(args, query_spec, loaded_query_spec)
-    raise ValueError("emit-sql now requires --explicit-cover; the enumerated strategy catalog was removed")
+    raise ValueError("emit-sql requires --explicit-cover")
 
 
 def _cmd_emit_sql(args: argparse.Namespace) -> int:
@@ -271,8 +265,6 @@ def _cmd_emit_sql(args: argparse.Namespace) -> int:
         run_config["sel_b"] = args.sel_b
         run_config["sel_m"] = args.sel_m
         if getattr(args, "explicit_cover", None):
-            # record the executed cover so cost-model validation scores the plan that
-            # actually ran (the selector's pick).
             run_config["explicit_cover"] = [n.strip() for n in args.explicit_cover.split(",") if n.strip()]
         payload["run_config"] = run_config
         _write_json(catalog_path, payload)
@@ -357,8 +349,6 @@ def _cmd_run(args: argparse.Namespace) -> int:
             cmd.append("--dump-qep")
     else:
         if getattr(args, "external_events_manifest", None) is not None:
-            # This branch hands run_benchmark.sh a prewritten SQL file with
-            # --no-generate, bypassing its loader invocation entirely.
             raise SystemExit(
                 "--external-events-manifest on the run command requires --cost-model-validation; "
                 "for other paths use emit-sql + run_benchmark.sh (EXTERNAL_EVENTS_MANIFEST)"
@@ -432,7 +422,7 @@ def _add_benchmark_args(parser: argparse.ArgumentParser) -> None:
         "--workload-profile",
         choices=WORKLOAD_PROFILES,
         default=DEFAULT_WORKLOAD_PROFILE,
-        help="Deterministic generated_events workload profile. Default preserves the historical modular grid.",
+        help="Deterministic generated_events workload profile (default: the modular grid).",
     )
     parser.add_argument(
         "--workload-seed",

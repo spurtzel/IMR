@@ -7,10 +7,9 @@ selectivity_mode in {b_unified, c}, independent selectivity per-type <= 100% and
 tightness range, stream/batch sanity.
 
 Structural spec constraints (unique vars, pattern order, predicate arity, quantifiers)
-are enforced by the central ,,validate_query_spec'' on the materialized QuerySpec;
-datagen-side feasibility additionally runs inside datagen at generation time.
+are checked by `validate_query_spec` on the materialized QuerySpec.
 
-Self-test (no DB, no generation): ,,python3 -m runner.validate --self-test''.
+Self-test (no DB, no generation): `python3 -m runner.validate --self-test`.
 """
 
 from __future__ import annotations
@@ -28,16 +27,13 @@ from runner.schema import (  # noqa: E402
 VALID_BACKENDS = {"trino", "memory"}
 VALID_SELECTIVITY_MODES = {"b_unified", "c"}
 VALID_TOPOLOGIES = {"chain", "star", "cycle", "clique", "complete", "long_edge", "independent",
-                    "triangle", "diamond"}  # topologies the sweep supports
+                    "triangle", "diamond"}
 VALID_QUERY_FREQUENCIES = {"all", "every2nd", "every4th", "every8th", "last"}
 VALID_JOIN_ORDERS = {"canonical", "dp", "bushy"}
 VALID_QUANTIFIERS = {"PLUS", "RELUCTANT_PLUS"}
 VALID_GAPS = {"reluctant", "greedy"}
-# spatial is the only predicate class the materializer supports
 VALID_PREDICATE_CLASSES = {"spatial"}
-# must match DatagenConfig.min_expected_pair_hits
 MIN_EXPECTED_PAIR_HITS = 100
-# the only cap keys the runner consumes; anything else in execution.caps is a typo and is rejected
 VALID_CAP_KEYS = {"EIMER_CURATED_MAX_STRATEGIES", "EIMER_CURATED_MAX_VIEWS"}
 
 
@@ -55,7 +51,6 @@ def validate_environment(env: EnvironmentConfig) -> None:
 def validate_experiment(exp: ExperimentConfig) -> None:
     q, d, ex = exp.query, exp.data, exp.execution
 
-    # --- query section ---
     if q.pattern_length < 1:
         raise ConfigError("query.pattern_length must be >= 1")
     if q.topology not in VALID_TOPOLOGIES:
@@ -73,7 +68,6 @@ def validate_experiment(exp: ExperimentConfig) -> None:
             raise ConfigError(f"query.kleene.gap {q.kleene.gap!r} is not one of "
                               f"{sorted(VALID_GAPS)}")
 
-    # --- data section: the two-layer selectivity model, Layer 1 ---
     if not d.stream or any(s <= 0 for s in d.stream):
         raise ConfigError("data.stream must be a non-empty list of positive batch sizes "
                           "([initial_table_size, batch1, ...])")
@@ -100,7 +94,6 @@ def validate_experiment(exp: ExperimentConfig) -> None:
     if d.cluster_count < 1:
         raise ConfigError("data.cluster_count must be >= 1")
 
-    # --- band geometry override + query schedule ---
     if d.band_half_widths is not None:
         if len(d.band_half_widths) != 2 or any(not 0.0 < w <= 1.0 for w in d.band_half_widths):
             raise ConfigError(f"data.band_half_widths {d.band_half_widths}: must be "
@@ -112,7 +105,6 @@ def validate_experiment(exp: ExperimentConfig) -> None:
         raise ConfigError("query.topology 'diamond' is a 4-variable topology "
                           f"(pattern_length {q.pattern_length})")
 
-    # --- band_tightness: Layer 2, only TIGHTENS ---
     if exp.band_tightness is not None:
         if not 0.0 < exp.band_tightness <= 1.0:
             raise ConfigError(f"band_tightness {exp.band_tightness}: must be in (0, 1] "
@@ -120,9 +112,6 @@ def validate_experiment(exp: ExperimentConfig) -> None:
         if q.predicate_class != "spatial":
             raise ConfigError("band_tightness declared but query.predicate_class is not "
                               "'spatial': the band dual has no non-spatial consumer")
-        # Feasibility floor at the declared (N, sigma): the conjunction with the dependent
-        # condition must keep the resolvable pair count above the statistical floor (same
-        # rule datagen enforces at generation, checked here so config fails before any run).
         n = sum(d.stream)
         rarest = min(d.independent_selectivity.values())
         expected = (rarest * n) ** 2 * exp.band_tightness
@@ -133,7 +122,6 @@ def validate_experiment(exp: ExperimentConfig) -> None:
                 f"{rarest}, band_tightness {exp.band_tightness}, the target selectivity "
                 "is statistically unresolvable; raise N/rates/band_tightness")
 
-    # --- execution section ---
     unknown_caps = set(ex.caps) - VALID_CAP_KEYS
     if unknown_caps:
         raise ConfigError(f"execution.caps: unknown cap key(s) {sorted(unknown_caps)} "
@@ -148,10 +136,6 @@ def validate_experiment(exp: ExperimentConfig) -> None:
         raise ConfigError(f"execution.join_order {ex.join_order!r} is not one of "
                           f"{sorted(VALID_JOIN_ORDERS)}")
 
-
-# --------------------------------------------------------------------------- #
-# Self-test: the negative acceptance cases (rejection is a FEATURE to test)
-# --------------------------------------------------------------------------- #
 
 def _valid_experiment_dict() -> dict:
     return {
@@ -199,25 +183,20 @@ def _self_test() -> int:
     def env(d):
         validate_environment(EnvironmentConfig.from_dict(d))
 
-    # positives
     expect_ok("valid experiment (R:10% B:10% M:15%, sum 35%)", exp)
     expect_ok("valid environment (explicit trino)",
               lambda: env({"backend": "trino"}))
-    # Kleene variables are named positionally after the conjunctive ones (here:
-    # pattern A B + Kleene C, binding the 3 declared types).
     expect_ok("kleene reluctant + COUNT measure",
               lambda: exp(lambda d: d["query"].update(
                   pattern_length=2,
                   kleene={"count": 1, "quantifier": "PLUS", "gap": "reluctant"},
                   measures=["COUNT(C.id) AS c_count"])))
-    # Greedy gap + COUNT is a valid query (COUNT collapses to 1): must be accepted.
     expect_ok("kleene greedy gap + COUNT measure (valid: run-eating semantics)",
               lambda: exp(lambda d: d["query"].update(
                   pattern_length=2,
                   kleene={"count": 1, "quantifier": "PLUS", "gap": "greedy"},
                   measures=["COUNT(C.id) AS c_count"])))
 
-    # negatives: each must be rejected with the constraint NAMED
     expect_reject("missing backend",
                   lambda: env({}), "backend is REQUIRED")
     expect_reject("unknown backend",

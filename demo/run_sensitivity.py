@@ -12,12 +12,12 @@ Defaults (every value user-settable via CLI flags):
   B         2, 5, 10   (at the baseline N)    --bs 2,5,10
   sigma     0.01, 0.05, 0.20                  --sigmas 0.01,...
 
-Per cell: generate the frame, load it, estimate selectivities with the b_unified
-estimator on the loaded table, run the native MATCH_RECOGNIZE arm and the
-clique_grow selector's pick (selected from those estimates; each arm runs an
-untimed warm-up pass first), gate the two on full-tuple identity, record both
-runtimes. An arm exceeding the per-query wall (--wall) is a DNF; within an axis the
-MATCH_RECOGNIZE arm is censored after its first DNF, the clique-grow arm always runs.
+Per cell: generates the frame, loads it, estimates selectivities with the b_unified
+estimator on the loaded table, runs the native MATCH_RECOGNIZE approach and the
+clique_grow selector's pick (each approach runs an untimed warm-up pass first), checks the
+two for full-tuple identity, records both runtimes. An approach exceeding the per-query
+wall (--wall) is a DNF; within an axis the MATCH_RECOGNIZE approach is censored after its
+first DNF, the clique-grow approach always runs.
 
 Results stream into <out-dir>/results.json after every cell; plots come from
 demo/plot_sensitivity.py (unless --no-plot).
@@ -51,8 +51,9 @@ VALID_K = sorted(k for k, topo in common.TOPOLOGY_SPECS if topo == "chain")
 
 
 def build_cells(baseline, axes):
-    """Baseline + one spoke per (axis, value), deduped on the full parameter key.
-    Every cell lists every axis it belongs to (the shared baseline appears in all)."""
+    """Baseline + one spoke per (axis, value), deduplicated on the full parameter key.
+        Every cell lists every axis it belongs to.
+    """
     cells: dict[tuple, dict] = {}
     def add(params, axis):
         key = (params["k"], params["n"], params["batches"], params["sigma"])
@@ -61,7 +62,6 @@ def build_cells(baseline, axes):
     for axis, (param, values) in axes.items():
         for v in values:
             add({**baseline, param: v}, axis)
-    # ascending hardness inside each axis == ascending (k, n, batches, sigma) overall
     return sorted(cells.values(), key=lambda c: (c["k"], c["n"], c["batches"], c["sigma"]))
 
 
@@ -94,7 +94,7 @@ def run_cell(client, cell, wall, mr_censored):
                cover=toks, spec_sha256=common.sha256_text(Path(spec_path).read_text()))
 
     if mr_censored:
-        rec["mr"] = dict(status="censored")  # an earlier cell on this axis DNF'd
+        rec["mr"] = dict(status="censored")
         mr_tuples = None
     else:
         mr_ms, mr_n, mr_tuples, meta = trino_exec.mr_streaming(
@@ -139,7 +139,7 @@ def main() -> int:
     ap.add_argument("--out-dir", default="out/sensitivity")
     ap.add_argument("--no-plot", action="store_true")
     ap.add_argument("--smoke", action="store_true",
-                    help="2 tiny cells only (wiring check, not science)")
+                    help="two small cells only (smoke test)")
     a = ap.parse_args()
 
     baseline = dict(k=a.baseline_k, n=a.baseline_n, batches=a.baseline_batches,
@@ -148,7 +148,7 @@ def main() -> int:
             "batches": ("batches", a.bs), "selectivity": ("sigma", a.sigmas)}
     bad_k = [k for k in {baseline["k"], *a.ks} if k not in VALID_K]
     if bad_k:
-        raise SystemExit(f"no committed chain spec for k={bad_k}; valid: {VALID_K}")
+        raise SystemExit(f"no chain spec for k={bad_k}; valid: {VALID_K}")
 
     out = Path(a.out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -163,7 +163,7 @@ def main() -> int:
           f"catalog {a.catalog}")
 
     records = []
-    mr_dnf_axes: set[str] = set()  # per-axis monotone censoring for the MR arm
+    mr_dnf_axes: set[str] = set()
     t_suite = time.perf_counter()
     for i, cell in enumerate(cells):
         censored = bool(set(cell["axes"]) & mr_dnf_axes) and cell["axes"] != ["smoke"]
@@ -172,7 +172,7 @@ def main() -> int:
               flush=True)
         try:
             rec = run_cell(client, cell, a.wall, censored)
-        except Exception as exc:  # a bad user-chosen cell must not kill the sweep
+        except Exception as exc:
             print(f"    cell ERROR: {type(exc).__name__}: {str(exc)[:200]}", flush=True)
             records.append(dict(k=cell["k"], n=cell["n"], batches=cell["batches"],
                                 sigma=cell["sigma"], axes=cell["axes"],

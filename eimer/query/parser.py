@@ -1,5 +1,5 @@
-"""match_recognize sql front-end: parse the restricted pattern-matching fragment
-into a normalized ir, collecting diagnostics instead of raising on the first error.
+"""MATCH_RECOGNIZE sql front-end: parses the restricted pattern-matching fragment
+into a normalized ir, collecting diagnostics.
 """
 from __future__ import annotations
 
@@ -28,19 +28,14 @@ from eimer.models import (
 )
 
 
-# a bare sql identifier: letter/underscore start, then word chars
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-# a pattern variable with an optional +/+? kleene quantifier
 _PATTERN_VAR_RE = re.compile(r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*)(?P<quant>\+\??)?$")
-# a measures item of the form ,,<expr> AS <alias>''
 _MEASURE_ALIAS_RE = re.compile(
     r"(?is)^(?P<expr>.+?)\s+AS\s+(?P<alias>[A-Za-z_][A-Za-z0-9_]*)\s*$"
 )
-# a qualified column reference ,,var.attr''
 _QUALIFIED_REF_RE = re.compile(
     r"\b(?P<var>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?P<attr>[A-Za-z_][A-Za-z0-9_]*)\b"
 )
-# a measure aggregate over a qualified column: FIRST|LAST|COUNT(var.attr)
 _MEASURE_FUNC_RE = re.compile(
     r"(?is)^(?P<func>FIRST|LAST|COUNT)\s*\(\s*(?P<var>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?P<attr>[A-Za-z_][A-Za-z0-9_]*)\s*\)$"
 )
@@ -73,7 +68,7 @@ class ParseError(ValueError):
 
 
 class DiagnosticCollector:
-    """accumulates parse diagnostics so compilation can report every problem at once."""
+    """Accumulates parse diagnostics."""
 
     def __init__(self) -> None:
         self.items: List[Diagnostic] = []
@@ -89,7 +84,7 @@ class DiagnosticCollector:
 
 
 def _find_keyword_positions(text: str, keyword: str) -> List[int]:
-    """byte offsets of every occurrence of ,,keyword'', skipping string and comment spans."""
+    """byte offsets of every occurrence of `keyword`, skipping string and comment spans."""
     positions: List[int] = []
     keyword_upper = keyword.upper()
     i = 0
@@ -156,7 +151,7 @@ def _find_keyword_positions(text: str, keyword: str) -> List[int]:
 
 
 def _find_next_non_space(text: str, start: int) -> int:
-    """index of the first non-whitespace char at or after ,,start''."""
+    """index of the first non-whitespace char at or after `start`."""
     i = start
     while i < len(text) and text[i].isspace():
         i += 1
@@ -164,7 +159,7 @@ def _find_next_non_space(text: str, start: int) -> int:
 
 
 def _extract_balanced_parenthesized(text: str, open_paren_index: int) -> Tuple[str, int]:
-    """text inside the parenthesized block opening at ,,open_paren_index'', plus the closing-paren index."""
+    """text inside the parenthesized block opening at `open_paren_index`, plus the closing-paren index."""
     if open_paren_index >= len(text) or text[open_paren_index] != "(":
         raise ParseError("Expected '(' while parsing parenthesized block")
 
@@ -298,7 +293,7 @@ def _top_level_tokens(text: str) -> List[Tuple[str, int]]:
 
 
 def _phrase_matches(tokens: Sequence[Tuple[str, int]], token_idx: int, phrase: Sequence[str]) -> bool:
-    """true when the token run at ,,token_idx'' spells out ,,phrase''."""
+    """true when the token run at `token_idx` spells out `phrase`."""
     if token_idx + len(phrase) > len(tokens):
         return False
     for offset, expected in enumerate(phrase):
@@ -472,7 +467,7 @@ def _split_top_level_conjuncts(expr: str) -> List[str]:
 
 
 def _contains_top_level_keyword(expr: str, keyword: str) -> bool:
-    """true when ,,keyword'' appears as a word at paren depth 0."""
+    """true when `keyword` appears as a word at paren depth 0."""
     depth = 0
     i = 0
     in_single = False
@@ -766,7 +761,6 @@ def _parse_define_entries(
 
     entries_by_upper: Dict[str, DefineEntryAst] = {}
     for part in parts:
-        # a DEFINE entry: ,,<variable> AS <expression>''
         match = re.fullmatch(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s+AS\s+(.+?)\s*", part, re.IGNORECASE | re.DOTALL)
         if not match:
             collector.add(

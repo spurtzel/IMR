@@ -1,10 +1,5 @@
 {
  "name": "ecommerce_Q1",
- "suite_metadata": {
-  "pattern_length": 3,
-  "shape": "chain",
-  "doc": "Flagship conversion funnel: same item viewed, carted, then bought by the same user within a session."
- },
  "variables": [
   {
    "name": "A",

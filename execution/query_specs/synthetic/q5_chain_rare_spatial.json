@@ -1,13 +1,5 @@
 {
-  "name": "q6_chain_rare_spatial",
-  "suite_metadata": {
-    "pattern_length": 6,
-    "shape": "chain",
-    "independent_selectivity_class": "rare",
-    "dependent_predicate_strength": "canonical",
-    "band_lon": 0.05,
-    "band_lat": 0.02
-  },
+  "name": "q5_chain_rare_spatial",
   "variables": [
     {
       "name": "A",
@@ -33,11 +25,6 @@
       "name": "E",
       "output_prefix": "e",
       "independent_predicate_id": "E_type"
-    },
-    {
-      "name": "F",
-      "output_prefix": "f",
-      "independent_predicate_id": "F_type"
     }
   ],
   "pattern": {
@@ -46,8 +33,7 @@
       "B",
       "C",
       "D",
-      "E",
-      "F"
+      "E"
     ],
     "wildcard": "Z",
     "wildcard_quantifier": "*"
@@ -112,18 +98,6 @@
         "primary_type"
       ],
       "selectivity_key": "E"
-    },
-    {
-      "predicate_id": "F_type",
-      "kind": "independent",
-      "variables": [
-        "F"
-      ],
-      "sql_template": "F.primary_type = 'ASSAULT'",
-      "referenced_columns": [
-        "primary_type"
-      ],
-      "selectivity_key": "F"
     }
   ],
   "dependent_predicates": [
@@ -182,20 +156,6 @@
         "lat"
       ],
       "selectivity_key": "D|E"
-    },
-    {
-      "predicate_id": "E_F_spatial",
-      "kind": "dependent",
-      "variables": [
-        "E",
-        "F"
-      ],
-      "sql_template": "F.lon BETWEEN E.lon - 0.05 AND E.lon + 0.05 AND F.lat BETWEEN E.lat - 0.02 AND E.lat + 0.02",
-      "referenced_columns": [
-        "lon",
-        "lat"
-      ],
-      "selectivity_key": "E|F"
     }
   ],
   "measures": [
@@ -248,16 +208,6 @@
       "expression": "E.time",
       "alias": "e_time",
       "sql_type": "TIMESTAMP(6)"
-    },
-    {
-      "expression": "F.id",
-      "alias": "f_id",
-      "sql_type": "BIGINT"
-    },
-    {
-      "expression": "F.time",
-      "alias": "f_time",
-      "sql_type": "TIMESTAMP(6)"
     }
   ],
   "result_key_columns": [
@@ -270,9 +220,7 @@
     "d_id",
     "d_time",
     "e_id",
-    "e_time",
-    "f_id",
-    "f_time"
+    "e_time"
   ],
   "event_schema": [
     {

@@ -1,4 +1,4 @@
-"""render helpers for value predicates: rewrite ,,var.col'' references into the
+"""render helpers for value predicates: rewrite `var.col` references into the
 qualified view/scan column names the emitter expects."""
 from __future__ import annotations
 
@@ -6,12 +6,11 @@ import re
 from typing import Any, Callable, Dict
 
 
-# matches a qualified reference: identifier dot identifier (var.col)
 QUALIFIED_REF_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\.\s*([A-Za-z_][A-Za-z0-9_]*)\b")
 
 
 def replace_qualified_refs(expression: str, resolver: Callable[[str, str], str | None]) -> str:
-    """rewrite each ,,var.col'' reference through resolver; leave it untouched when resolver returns None."""
+    """rewrite each `var.col` reference through resolver; leave it untouched when resolver returns None."""
     def _replace(match: re.Match[str]) -> str:
         var = match.group(1)
         col = match.group(2)

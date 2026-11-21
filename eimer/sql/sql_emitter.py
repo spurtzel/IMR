@@ -1,8 +1,8 @@
-"""sql emitter: renders the update, composition, and post-filter statements for a
-maintained plan. update SQL keeps each materialized view current per batch;
-composition joins the covered views (left-deep or bushy tree) into the query result;
-the post-filter dedups to one row per match so the output equals native
-MATCH_RECOGNIZE.
+"""Renders the update, composition, and post-filter statements for a maintained plan.
+
+Update SQL maintains each materialized view per batch; composition joins the covered
+views (left-deep or bushy tree) into the query result; the post-filter keeps one row
+per match, so the output equals native MATCH_RECOGNIZE.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from eimer.models import (
     view_name,
     view_sort_key,
 )
-from eimer.sql.sql_dialect import SqlDialect, rewrite_sql
+from eimer.sql.sql_dialect import SqlDialect
 from eimer.sql.backend import backend_for
 from eimer.sql.sql_render import (
     is_kleene_variable,
@@ -44,12 +44,10 @@ def _ordered_vars(view: View, positions: Dict[str, int]) -> List[str]:
 
 
 def _view_table_name(view: View, positions: Dict[str, int]) -> str:
-    # ,,cache'' and ,,view'' mean the same materialized sub-pattern view here; the table uses a ,,cache_'' prefix.
     return f"cache_{view_name(view, positions)}"
 
 
 def _kleene_staging_table_name(view: View, positions: Dict[str, int]) -> str:
-    # Per-view append staging table: a 1:1 column clone of cache_<view>, no index; the runner appends staging -> view each batch.
     return f"stg_{view_name(view, positions)}"
 
 
@@ -153,7 +151,6 @@ def _structural_predicates(left: View, right: View, left_alias: str, right_alias
             f"{_latest_ts_expr(outer_alias, outer_last, dep_graph)}",
         ]
 
-    # INEQ: views are disjoint and neither frames the other, so positions may separate or cross.
     predicates = []
     for left_var in sorted(left, key=lambda v: positions[v]):
         for right_var in sorted(right, key=lambda v: positions[v]):
@@ -168,19 +165,15 @@ def _structural_predicates(left: View, right: View, left_alias: str, right_alias
 
 
 def _dependent_predicates_in_on_enabled() -> bool:
-    """place dependent value predicates at the lowest evaluable JOIN ON instead of the final
-    WHERE. Trino (reordering NONE) does not push band predicates below cross joins, so ON
-    placement filters at the earliest join. EIMER_DEPENDENT_PREDICATES_IN_ON=0 restores
-    final-WHERE rendering; the regime is part of plan content, so plan fingerprints depend on it."""
+    """Whether dependent value predicates are placed at the lowest evaluable JOIN ON.
+        `EIMER_DEPENDENT_PREDICATES_IN_ON=0` selects final-WHERE rendering.
+    """
     return os.environ.get("EIMER_DEPENDENT_PREDICATES_IN_ON", "").lower() not in ("0", "false", "off", "no")
 
 
 def _collect_internalized_conditions(target_view: View, dep_graph: DependencyGraph) -> List[str]:
     internalized: List[str] = []
 
-    # Independent predicates are already applied on the RAW base scan, so re-rendering them here on
-    # the PROJECTED columns is redundant. Under schema-min the projected filter column is dropped, so
-    # this prefixed re-reference would be an invalid identifier; skip it. Kept when schema-min is off.
     if not schema_min_enabled():
         for var in _ordered_vars(target_view, dep_graph.positions):
             internalized.extend(dep_graph.independent_conditions.get(var, []))
@@ -241,9 +234,7 @@ def _edge_internalized_in_nodes(nodes: Set[View], var_left: str, var_right: str)
 
 def _composition_dependent_predicates(nodes: Set[View], var_aliases: Dict[str, List[str]],
                                       dep_graph: DependencyGraph) -> List[str]:
-    """render every dependent edge predicate not already enforced inside a node. an edge
-    contained in some composition node is internalized by that view/update SQL; otherwise
-    it must appear in the final compose WHERE."""
+    """Renders every dependent edge predicate not already enforced inside a node."""
 
     var_to_alias = {
         var: aliases[0]
@@ -298,15 +289,16 @@ def _canonical_source_join_sequence(sources: Set[View],
 def _singleton_scan_sql(variable: str, table_name: str, alias: str,
                         columns_by_var: Dict[str, List[str]], independent_conditions: List[str],
                         extra_conditions: "List[str] | None" = None) -> str:
-    """the projected base scan of one variable; ,,extra_conditions'' are already-rendered predicates on
-    the scan alias ,,b'' (the batch-window prefix prune) appended to the WHERE."""
+    """The projected base scan of one variable; `extra_conditions` are rendered predicates on
+        the scan alias `b` appended to the WHERE.
+    """
     projected = [
         f"id AS {variable}_id",
         f"ts AS {variable}_ts",
     ]
 
     for col in columns_by_var.get(variable, []):
-        if col.lower() in {"id", "ts"}:   # case-insensitive: id/ts are keys regardless of the referenced casing
+        if col.lower() in {"id", "ts"}:
             continue
         projected.append(f"{col} AS {variable}_{col}")
 
@@ -319,18 +311,6 @@ def _singleton_scan_sql(variable: str, table_name: str, alias: str,
     return f"(SELECT {', '.join(projected)} FROM {table_name} b{where_sql}) {alias}"
 
 
-# --- the batch-window prefix prune -------------------------------------------------------------
-# a view update joins the batch rows of the target's last variable against the other sources' full
-# state (the history singleton scans and the source caches). when the query bounds the distance
-# between a source variable x and the last variable y (an explicit or propagated window, ts_y - ts_x
-# <= W), no history row with x.ts < min(batch.ts) - W can join with any batch row, so the source scan
-# can be restricted to ,,x_ts >= (SELECT min(ts) FROM batch) - W'' before the join. the predicate is
-# implied by the query's window and the batch's time span, so the update result is unchanged; the
-# source side shrinks from the whole history to one batch span plus one window. the bound is the
-# conservative implied window (temporal_propagation: one extra unit per date_diff bound, because
-# engines count unit boundaries). enabled per backend (batch_window_prefix_prune); kill-switch
-# EIMER_DISABLE_PREFIX_PRUNE=1. kleene variables are skipped (their run columns are not a single ts).
-
 def _prefix_prune_enabled(dialect: SqlDialect) -> bool:
     if os.environ.get("EIMER_DISABLE_PREFIX_PRUNE", "").lower() in ("1", "true", "yes"):
         return False
@@ -338,13 +318,13 @@ def _prefix_prune_enabled(dialect: SqlDialect) -> bool:
 
 
 def _prefix_prune_bounds(dep_graph: DependencyGraph) -> Dict[Tuple[str, str], float]:
-    """conservative implied windows (ms), keyed (x, y) with pos(x) < pos(y)."""
+    """Implied windows (ms), keyed (x, y) with pos(x) < pos(y)."""
     from eimer.query.temporal_propagation import implied_windows
     return implied_windows(dep_graph, conservative=True)
 
 
 def _prune_predicate_sql(ts_expr: str, w_ms: float, batch_table: str) -> str:
-    bound = int(math.ceil(w_ms - 1e-9))  # whole milliseconds, rounded up: never tighter than the window
+    bound = int(math.ceil(w_ms - 1e-9))
     return f"{ts_expr} >= (SELECT min(ts) FROM {batch_table}) - INTERVAL '{bound}' MILLISECOND"
 
 
@@ -387,7 +367,7 @@ def _mr_group_detect_columns(variable: str, columns_by_var: Dict[str, List[str]]
     ]
 
     for col in columns_by_var.get(variable, []):
-        if col.lower() in {"id", "ts"}:   # case-insensitive: id/ts are keys regardless of the referenced casing
+        if col.lower() in {"id", "ts"}:
             continue
         insert_cols.append(f"{variable}_first_{col}")
         insert_cols.append(f"{variable}_last_{col}")
@@ -406,13 +386,10 @@ def _mr_group_detect_update_sql(variable: str, dep_graph: DependencyGraph, colum
     define_expr = " AND ".join(conditions) if conditions else "TRUE"
 
     if target_table is not None and redetect_lo is None:
-        # target_table is honored only in window mode; without redetect_lo it would full-rescan into
-        # the real view instead of staging, almost certainly a caller bug.
         raise ValueError(
             "_mr_group_detect_update_sql: target_table requires redetect_lo")
 
     if redetect_lo is None:
-        # default path: full rescan of the base table.
         return "\n".join(
             [
                 f"INSERT INTO {table_name} ({', '.join(insert_cols)})",
@@ -432,11 +409,6 @@ def _mr_group_detect_update_sql(variable: str, dep_graph: DependencyGraph, colum
             ]
         )
 
-    # opt-in incremental "stitch": re-detect runs over ONLY the window [redetect_lo, MAX(id) of the
-    # current batch] and APPEND every detected run (no WHERE EXISTS). The read-side _kleene_dedup_cte
-    # keeps the longest run per first_id, so the view is never rewritten in place and never indexed.
-    # ,,redetect_lo'' is the run start left open at the previous boundary (O(1) state the runner
-    # carries); it is rendered as passed.
     dest = target_table or table_name
     redetect_src = (
         f"(SELECT * FROM {base_table} "
@@ -481,11 +453,10 @@ def _render_deferred_condition_for_edge(expression: str, left: View, right: View
 def _emit_source_tree_node(tree: JoinTreeNode, source_sql: Dict[View, str], source_aliases: Dict[View, str],
                            dep_graph: DependencyGraph, columns_by_var: Dict[str, List[str]],
                            counter: List[int]) -> Tuple[str, str, View, Dict[str, str]]:
-    """recursively emit the nested-subquery FROM for a bushy SOURCE tree of an update build, returning
-    ,,(sql_fragment, alias, merged_view, var_to_alias)''. Leaves reuse the build's ,,source_sql''; inner
-    nodes carry the structural predicates (equi / band / inequality) at their ON, and shared-source
-    children add the ,,{V}_ts'' companion so each variable surfaces once. Dependent value predicates and
-    the adjacent ts-sequence stay in the build WHERE; inner aliases are ,,stn<k>''."""
+    """Emits the nested-subquery FROM for a bushy SOURCE tree of an update build, returning
+        `(sql_fragment, alias, merged_view, var_to_alias)`. Inner nodes carry the structural
+        predicates (equi / band / inequality) at their ON; inner aliases are `stn<k>`.
+    """
     if tree.node is not None:
         alias = source_aliases[tree.node]
         return source_sql[tree.node], alias, tree.node, {var: alias for var in tree.node}
@@ -507,14 +478,7 @@ def _emit_source_tree_node(tree: JoinTreeNode, source_sql: Dict[View, str], sour
     )
     shared = left_view & right_view
     for var in sorted(shared, key=lambda v: dep_graph.positions[v]):
-        # _structural_predicates' EQUI branch emits only the id key; add the ts companion so a
-        # shared-source tree stays consistent with the left-deep repeat-var contract.
         predicates.append(f"{left_alias}.{var}_ts = {right_alias}.{var}_ts")
-    # Push each DEPENDENT band predicate that first spans these two children (one endpoint
-    # left-exclusive, the other right-exclusive) into THIS ON, so the bushy source tree filters
-    # early instead of at the top WHERE under Trino's no-pushdown. The build WHERE still re-emits
-    # these bands, so each ON band is logically implied by a WHERE band: it only adds early filters
-    # and never changes the result set. Bands internal to a single source stay internalized there.
     left_map = {var: left_alias for var in left_view}
     right_map = {var: right_alias for var in right_view}
     resolved_map = {**right_map, **left_map}
@@ -547,8 +511,9 @@ def _emit_source_tree_node(tree: JoinTreeNode, source_sql: Dict[View, str], sour
 def generate_update_sql_statements(strategy_with_plans: StrategyWithPlans, dep_graph: DependencyGraph,
                                    update_plan: UpdatePlan, base_table: str, batch_table: str, *,
                                    prefix_prune: bool = False) -> List[str]:
-    """one INSERT per maintained view in topological order. ,,prefix_prune'' applies the batch-window
-    prefix prune to every non-batch source (see _prefix_prune_enabled); off by default."""
+    """One INSERT per maintained view in topological order. `prefix_prune` applies the batch-window
+        prefix prune to every non-batch source (see `_prefix_prune_enabled`); off by default.
+    """
     _kleene_guardrails(strategy_with_plans, dep_graph)
 
     positions = dep_graph.positions
@@ -627,9 +592,6 @@ def generate_update_sql_statements(strategy_with_plans: StrategyWithPlans, dep_g
         )
 
         if source_tree is not None:
-            # Bushy source tree: structural predicates at the lowest node; dependent value predicates
-            # and the adjacent ts-sequence stay in the WHERE as the left-deep path emits them, so
-            # bands-in-ON attachment does not run here.
             if set(source_tree.views) != set(effective_sources):
                 raise ValueError("source_join_trees leaves must equal the build's effective sources")
             root_sql, _root_alias, _merged_view, var_to_alias = _emit_source_tree_node(
@@ -777,8 +739,7 @@ def _composition_root_for_join_order(nodes: Set[View], composition_plan: Composi
 
 
 def _tree_mode_kleene_guard(dep_graph: DependencyGraph) -> None:
-    """fail loud if any pattern variable is Kleene: bushy tree emission does not support Kleene
-    grouping/dedup. raised before any tree SQL is built."""
+    """Raises an error if any pattern variable is Kleene (bushy tree emission supports no Kleene variables)."""
     if _kleene_variables(dep_graph):
         raise NotImplementedError(
             "Kleene variables are not supported in bushy tree composition mode yet"
@@ -787,9 +748,9 @@ def _tree_mode_kleene_guard(dep_graph: DependencyGraph) -> None:
 
 def _tree_leaf_sql(node: View, alias: str, strategy: Set[View], dep_graph: DependencyGraph,
                    columns_by_var: Dict[str, List[str]], base_table: str) -> str:
-    """the leaf relation for a composition node: a maintained view table reference
-    (,,cache_<view> <alias>'') or, for an implicit singleton, the inline base scan. Kleene nodes are
-    unreachable here (,,_tree_mode_kleene_guard'' runs first)."""
+    """The leaf relation for a composition node: a maintained view table reference
+        (`cache_<view> <alias>`) or, for an implicit singleton, the inline base scan.
+    """
     if node in strategy:
         return f"{_view_table_name(node, dep_graph.positions)} {alias}"
 
@@ -806,23 +767,18 @@ def _tree_leaf_sql(node: View, alias: str, strategy: Set[View], dep_graph: Depen
 
 
 def _tree_node_conditions(left_map: Dict[str, str], right_map: Dict[str, str], dep_graph: DependencyGraph) -> List[str]:
-    """every predicate whose endpoints first co-occur at this inner node, rendered against the child
-    aliases: shared-variable equality keys ({V}_id and {V}_ts), each dependent-edge value predicate
-    that spans the two children (one endpoint left-exclusive, the other right-exclusive; an edge
-    within a single leaf is internalized there), and the cross-child pairwise ts-ordering by position.
-    Shared variables resolve to the LEFT alias, so each variable has one unambiguous column."""
+    """Every predicate whose endpoints first co-occur at this inner node, rendered against the child
+        aliases: shared-variable equality keys ({V}_id and {V}_ts), dependent-edge value predicates
+        spanning the two children, and the cross-child pairwise ts-ordering by position.
+        Shared variables resolve to the left alias.
+    """
     positions = dep_graph.positions
     shared = set(left_map) & set(right_map)
-    # Left wins for shared variables: the equality keys collapse the two physical copies, so every
-    # later reference (bands, ts-ordering, ancestor ON, projection) uses the surviving LEFT alias.
     resolved_map = {**right_map, **left_map}
     left_only = set(left_map) - shared
     right_only = set(right_map) - shared
 
     def crosses(var_a: str, var_b: str) -> bool:
-        # An edge spans this node only if one endpoint is left-EXCLUSIVE and the other
-        # right-EXCLUSIVE. A shared endpoint means the edge is internal to a leaf below (already
-        # enforced in its view/scan), so it must not be re-emitted here.
         return (var_a in left_only and var_b in right_only) or (
             var_a in right_only and var_b in left_only
         )
@@ -845,8 +801,6 @@ def _tree_node_conditions(left_map: Dict[str, str], right_map: Dict[str, str], d
     for left_var in sorted(left_map, key=lambda var: positions[var]):
         for right_var in sorted(right_map, key=lambda var: positions[var]):
             if left_var==right_var:
-                # shared variable: the equality keys above already tie the two copies; a ts-ordering
-                # of an event against itself would be an always-false self-comparison.
                 continue
             earlier, later = (
                 (left_var, right_var)
@@ -861,11 +815,12 @@ def _tree_node_conditions(left_map: Dict[str, str], right_map: Dict[str, str], d
 
 
 def _var_columns(alias: str, variable: str, columns_by_var: Dict[str, List[str]]) -> List[str]:
-    """the qualified pass-through columns the view/scan exposes for ,,variable'' under ,,alias'':
-    ,,{alias}.{var}_id'', ,,{alias}.{var}_ts'', then each referenced non-id/ts column."""
+    """The qualified pass-through columns the view/scan exposes for `variable` under `alias`:
+        `{alias}.{var}_id`, `{alias}.{var}_ts`, then each referenced non-id/ts column.
+    """
     cols = [f"{alias}.{variable}_id", f"{alias}.{variable}_ts"]
     for col in columns_by_var.get(variable, []):
-        if col.lower() in {"id", "ts"}:   # case-insensitive: id/ts are keys regardless of the referenced casing
+        if col.lower() in {"id", "ts"}:
             continue
         cols.append(f"{alias}.{variable}_{col}")
     return cols
@@ -874,9 +829,9 @@ def _var_columns(alias: str, variable: str, columns_by_var: Dict[str, List[str]]
 def _tree_node_select_list(left_alias: str, right_alias: str, left_map: Dict[str, str],
                            right_map: Dict[str, str], dep_graph: DependencyGraph,
                            columns_by_var: Dict[str, List[str]]) -> str:
-    """the node's SELECT list. Disjoint children keep the ,,<l>.*, <r>.*'' wildcard. When the children
-    share variables, the shared columns survive on the LEFT only: keep ,,<l>.*'' whole and project just
-    the right-exclusive variables' columns, so each variable surfaces exactly once."""
+    """The node's SELECT list: `<l>.*, <r>.*` for disjoint children; when the children
+        share variables, `<l>.*` plus the right-exclusive variables' columns.
+    """
     shared = set(left_map) & set(right_map)
     if not shared:
         return f"{left_alias}.*, {right_alias}.*"
@@ -892,10 +847,10 @@ def _tree_node_select_list(left_alias: str, right_alias: str, left_map: Dict[str
 def _emit_tree_node(tree: JoinTreeNode, node_sql: Dict[View, str], node_aliases: Dict[View, str],
                     dep_graph: DependencyGraph, columns_by_var: Dict[str, List[str]],
                     counter: List[int]) -> Tuple[str, str, Dict[str, str]]:
-    """recursively emit the nested-subquery FROM for a bushy tree node, returning
-    ,,(sql_fragment, alias, var_to_alias)''. Inner nodes carry every predicate that first becomes
-    evaluable here at their ON; leaves reuse the left-deep leaf SQL. Leaves keep their left-deep
-    alias, inner nodes are ,,tn<k>''."""
+    """Emits the nested-subquery FROM for a bushy tree node, returning
+        `(sql_fragment, alias, var_to_alias)`. Inner nodes (`tn<k>`) carry every predicate that
+        first becomes evaluable there at their ON; leaves use the left-deep leaf SQL.
+    """
     if tree.node is not None:
         alias = node_aliases[tree.node]
         return node_sql[tree.node], alias, {var: alias for var in tree.node}
@@ -924,22 +879,21 @@ def _emit_tree_node(tree: JoinTreeNode, node_sql: Dict[View, str], node_aliases:
 
 
 def _compose_tree_emission_enabled() -> bool:
-    """Whether ,,generate_sql_statements_for_cover'' renders the composition over
-    ,,CompositionPlan.join_tree'' (the join tree the cost model prices). Default ON; with
-    ,,EIMER_DISABLE_COMPOSE_TREE=1'' the tree is dropped and the leaves are composed as the
-    canonical positional left-deep chain."""
+    """Whether `generate_sql_statements_for_cover` renders the composition over
+        `CompositionPlan.join_tree`. Default on; `EIMER_DISABLE_COMPOSE_TREE=1` composes the
+        leaves as the positional left-deep chain.
+    """
     return os.environ.get("EIMER_DISABLE_COMPOSE_TREE", "").lower() not in ("1", "true", "on", "yes")
 
 
 def generate_composition_tree_sql(strategy_with_plans: StrategyWithPlans, dep_graph: DependencyGraph,
                                   composition_nodes: Iterable[View], join_tree: JoinTreeNode,
                                   base_table: str) -> str:
-    """render bushy-tree composition: the same outer shape as ,,generate_composition_sql_for_nodes''
-    (identical SELECT columns and global-sequence WHERE) but a FROM built from recursive nested
-    subqueries over ,,join_tree''. Predicates always sit at their lowest evaluable tree node
-    (independent of ,,EIMER_DEPENDENT_PREDICATES_IN_ON''); the top WHERE re-emits only the global
-    adjacent ts-sequence. Edges internal to a single leaf view are internalized there. Kleene
-    variables raise."""
+    """Renders a bushy-tree composition with the outer shape of `generate_composition_sql_for_nodes`
+        and a FROM built from nested subqueries over `join_tree`. Predicates sit at their lowest
+        evaluable tree node; the top WHERE holds the global adjacent ts-sequence. Kleene variables
+        raise an error.
+    """
 
     _tree_mode_kleene_guard(dep_graph)
 
@@ -964,8 +918,6 @@ def generate_composition_tree_sql(strategy_with_plans: StrategyWithPlans, dep_gr
         join_tree, node_sql, node_aliases, dep_graph, columns_by_var, [0]
     )
 
-    # Same outer SELECT list as the left-deep path: the id/ts keys, then the MEASURES value columns
-    # that are not already a key (the post-filter projects them; without them a measures query fails).
     measure_cols_by_var: Dict[str, set] = {}
     for _m in dep_graph.measures:
         measure_cols_by_var.setdefault(_m.variable, set()).add(_measure_cache_column(_m))
@@ -998,10 +950,10 @@ def generate_composition_tree_sql(strategy_with_plans: StrategyWithPlans, dep_gr
 def generate_composition_sql_for_nodes(strategy_with_plans: StrategyWithPlans, dep_graph: DependencyGraph,
                                        composition_nodes: Iterable[View], composition_plan: CompositionPlan,
                                        base_table: str, join_tree: JoinTreeNode | None = None) -> str:
-    """render composition for explicit query leaf nodes. The materialization strategy determines which
-    view tables are maintained; the composition node set determines which leaves answer this query.
-    When ,,join_tree'' is supplied the FROM is built from recursive nested subqueries instead of the
-    left-deep JOIN chain."""
+    """Renders the composition for explicit query leaf nodes. The materialization strategy determines
+        which view tables are maintained; the composition node set determines which leaves answer this
+        query. With `join_tree` the FROM is built from nested subqueries, otherwise from a left-deep JOIN chain.
+    """
 
     if join_tree is not None and not _kleene_variables(dep_graph):
         return generate_composition_tree_sql(
@@ -1095,7 +1047,6 @@ def generate_composition_sql_for_nodes(strategy_with_plans: StrategyWithPlans, d
         elif right in visited and left not in visited:
             anchor, new_node = right, left
         else:
-            # Defensive fallback if ordering is malformed.
             anchor, new_node = left, right
 
         predicates = _structural_predicates(
@@ -1145,7 +1096,6 @@ def generate_composition_sql_for_nodes(strategy_with_plans: StrategyWithPlans, d
             key_cols = [f"{var}_id", f"{var}_ts"]
         for col in key_cols:
             select_columns.append(f"{alias}.{col} AS {col}")
-        # forward MEASURES value columns (FIRST/LAST(v.attr) / non-Kleene v.attr) that are not already a key
         for col in sorted(measure_cols_by_var.get(var, set()) - set(key_cols)):
             select_columns.append(f"{alias}.{col} AS {col}")
 
@@ -1163,8 +1113,6 @@ def generate_composition_sql_for_nodes(strategy_with_plans: StrategyWithPlans, d
         dep_graph,
     )
     if bands_in_on:
-        # Attached conditions live in their JOIN ON; only never-attachable leftovers (none in practice)
-        # fall through to WHERE.
         dependent_predicates = []
         for dep_edge in pending_dependent_edges:
             for condition in dep_edge.dependent_conditions:
@@ -1192,11 +1140,11 @@ def generate_composition_sql_for_nodes(strategy_with_plans: StrategyWithPlans, d
 
 
 def one_per_anchor_dedup_key(dep_graph_or_variables):
-    """the ONE-ROW-PER-MATCH dedup key that makes a materialized result equal native MATCH_RECOGNIZE.
-    Returns (partition_col, [(order_col, direction), ...]): partition_col is the anchor's id (first_id
-    for a Kleene anchor); order terms are each non-anchor var's ts (first_ts for Kleene), DESC for a
-    greedy predecessor and ASC for a reluctant one. Used by both the post-filter and the streaming
-    benchmark's global dedup, so the criterion is identical everywhere."""
+    """The one-row-per-match dedup key.
+        Returns (partition_col, [(order_col, direction), ...]): partition_col is the anchor's id (first_id
+        for a Kleene anchor); order terms are each non-anchor var's ts (first_ts for Kleene), DESC for a
+        greedy predecessor and ASC for a reluctant one.
+    """
     if isinstance(dep_graph_or_variables, DependencyGraph):
         dep_graph = dep_graph_or_variables
         variables = dep_graph.variables
@@ -1219,9 +1167,9 @@ def one_per_anchor_dedup_key(dep_graph_or_variables):
 
 
 def _measure_cache_column(measure) -> str:
-    """the view column that carries a MEASURES value. Kleene run-cache: COUNT->{v}_count,
-    FIRST(v.a)->{v}_first_{a}, LAST(v.a)->{v}_last_{a}. Non-Kleene VALUE(v.a)->{v}_{a}. The parser
-    guarantees this scoping (VALUE only for non-Kleene; FIRST/LAST/COUNT only for Kleene)."""
+    """The view column that carries a MEASURES value. Kleene run-cache: COUNT->{v}_count,
+        FIRST(v.a)->{v}_first_{a}, LAST(v.a)->{v}_last_{a}. Non-Kleene VALUE(v.a)->{v}_{a}.
+    """
     v, attr, kind = measure.variable, measure.attribute, measure.kind
     if kind=="COUNT":
         return f"{v}_count"
@@ -1235,11 +1183,10 @@ def _measure_cache_column(measure) -> str:
 
 
 def _assert_kleene_measures_run_capturing(dep_graph: DependencyGraph) -> None:
-    """a Kleene COUNT/FIRST/LAST reflects the MAXIMAL contiguous run (run-cache is PATTERN(v+)), which
-    equals native MATCH_RECOGNIZE only when the query is RUN-CAPTURING: the wildcard gap immediately
-    before the Kleene variable is RELUCTANT (Z*?), or the variable is pattern-initial. A greedy gap
-    (Z*) before a measured Kleene variable is run-eating (COUNT collapses to 1) and cannot be modeled,
-    so fail loudly rather than emit a silently-wrong COUNT."""
+    """Checks that a query with Kleene COUNT/FIRST/LAST measures is run-capturing: the wildcard gap
+        immediately before the Kleene variable is reluctant (Z*?), or the variable is pattern-initial.
+        Raises an error otherwise.
+    """
     gap_before = {gap.right_variable: gap.mode for gap in dep_graph.wildcard_gaps}
     for measure in dep_graph.measures:
         if measure.kind in ("COUNT", "FIRST", "LAST") and _is_kleene_variable(measure.variable, dep_graph):
@@ -1260,9 +1207,7 @@ def _assert_kleene_measures_run_capturing(dep_graph: DependencyGraph) -> None:
 
 
 def _post_filter_key_columns(dep_graph: DependencyGraph) -> List[str]:
-    """the internal identity/ts/count key columns the compose produces per variable. Kept alongside the
-    MEASURES projection so consumers that read the internal names (the streaming benchmark's global
-    dedup projects {v}_id/{v}_ts, never a measure alias) still work."""
+    """The internal identity/ts/count key columns the compose produces per variable."""
     cols: List[str] = []
     for var in dep_graph.variables:
         if _is_kleene_variable(var, dep_graph):
@@ -1273,9 +1218,10 @@ def _post_filter_key_columns(dep_graph: DependencyGraph) -> List[str]:
 
 
 def measure_projection_columns(dep_graph_or_variables: DependencyGraph | Sequence[str]) -> List[str]:
-    """the result projection for the MEASURES clause: ,,<view_column> AS <alias>'' per measure, in
-    MEASURES order, matching native MATCH_RECOGNIZE's output columns. Empty when there are no measures
-    (or the caller passed a bare variable sequence), keeping the SELECT * (id/ts keys) contract."""
+    """The result projection for the MEASURES clause: `<view_column> AS <alias>` per measure, in
+        MEASURES order. Empty when there are no measures (or the caller passed a bare variable
+        sequence).
+    """
     if not isinstance(dep_graph_or_variables, DependencyGraph) or not dep_graph_or_variables.measures:
         return []
     _assert_kleene_measures_run_capturing(dep_graph_or_variables)
@@ -1288,14 +1234,8 @@ def generate_post_filter_sql(composition_sql: str, dep_graph_or_variables: Depen
         composition_inner = composition_inner[:-1]
     anchor_partition_col, terms = one_per_anchor_dedup_key(dep_graph_or_variables)
     order_clause = ", ".join(f"{col} {direction}" for col, direction in terms)
-    # MEASURES projection (== native MR output columns) when present, else SELECT * (id/ts keys).
-    # Alongside the measure aliases we keep the internal id/ts/count key columns so the streaming
-    # benchmark's global dedup still works; a measure aliased to a key name is skipped to avoid a
-    # duplicate output column.
     measure_cols = measure_projection_columns(dep_graph_or_variables)
     if measure_cols:
-        # case-insensitive skip (SQL engines fold unquoted identifiers): a key column whose name folds
-        # to a measure alias (e.g. key A_id vs alias a_id) must NOT be re-projected, else ambiguous column.
         measure_aliases = {m.alias.lower() for m in dep_graph_or_variables.measures}
         key_cols = [f"{c} AS {c}" for c in _post_filter_key_columns(dep_graph_or_variables)
                     if c.lower() not in measure_aliases]
@@ -1318,8 +1258,7 @@ def generate_post_filter_sql(composition_sql: str, dep_graph_or_variables: Depen
 
 
 def _require_native_mr_for_kleene(dep_graph: DependencyGraph, dialect: SqlDialect) -> None:
-    """Kleene run caches are (re-)detected with a native MATCH_RECOGNIZE statement, so a
-    dialect without one (duckdb) cannot execute them: fail loud before any SQL is rendered."""
+    """Raises an error for Kleene run caches on a dialect without native MATCH_RECOGNIZE (duckdb)."""
     kleene = _kleene_variables(dep_graph)
     if kleene and not backend_for(dialect).supports_native_match_recognize:
         raise ValueError(
@@ -1327,25 +1266,14 @@ def _require_native_mr_for_kleene(dep_graph: DependencyGraph, dialect: SqlDialec
             f"of {sorted(kleene)} requires; Kleene queries are not supported on this dialect")
 
 
-def _statements_for_dialect(statements: SQLStatements, dialect: SqlDialect) -> SQLStatements:
-    """Apply the dialect's emit-time SQL rewrites. TRINO returns the input unchanged."""
-    if dialect is SqlDialect.TRINO:
-        return statements
-    return SQLStatements(
-        update_statements=[rewrite_sql(s, dialect) for s in statements.update_statements],
-        composition_sql=rewrite_sql(statements.composition_sql, dialect),
-        post_filter_sql=rewrite_sql(statements.post_filter_sql, dialect),
-    )
-
-
 def generate_sql_statements_for_cover(strategy_with_plans: StrategyWithPlans, dep_graph: DependencyGraph,
                                       composition_nodes: Iterable[View], composition_plan: CompositionPlan,
                                       update_plan: UpdatePlan, base_table: str = "events",
                                       batch_table: str = "events_batch", *,
                                       dialect: SqlDialect = SqlDialect.TRINO) -> SQLStatements:
-    """render SQL for a maintained strategy with an explicit composition cover. ,,dialect'' selects the
-    target SQL dialect (TRINO is the default; DUCKDB is the second dialect; any other fails loud
-    in the backend registry)."""
+    """Renders SQL for a maintained strategy with an explicit composition cover. `dialect` selects the
+        target SQL dialect (TRINO is the default, DUCKDB the other option).
+    """
     _require_native_mr_for_kleene(dep_graph, dialect)
 
     update_statements = generate_update_sql_statements(
@@ -1357,8 +1285,6 @@ def generate_sql_statements_for_cover(strategy_with_plans: StrategyWithPlans, de
         prefix_prune=_prefix_prune_enabled(dialect),
     )
 
-    # Execute the join tree the plan carries (the one the cost model prices). A plan without a tree
-    # (canonical / left-deep DP) and any Kleene query keep the left-deep chain.
     composition_sql = generate_composition_sql_for_nodes(
         strategy_with_plans,
         dep_graph,
@@ -1370,13 +1296,10 @@ def generate_sql_statements_for_cover(strategy_with_plans: StrategyWithPlans, de
 
     post_filter_sql = generate_post_filter_sql(composition_sql, dep_graph)
 
-    return _statements_for_dialect(
-        SQLStatements(
-            update_statements=update_statements,
-            composition_sql=composition_sql,
-            post_filter_sql=post_filter_sql,
-        ),
-        dialect,
+    return SQLStatements(
+        update_statements=update_statements,
+        composition_sql=composition_sql,
+        post_filter_sql=post_filter_sql,
     )
 
 
@@ -1400,11 +1323,8 @@ def generate_sql_statements_from_evaluation_plan(plan: "EvaluationPlan", *,
                                                  dialect: SqlDialect = SqlDialect.TRINO) -> SQLStatements:
     update_statements: List[str] = [update_op.sql for update_op in plan.update_ops]
 
-    return _statements_for_dialect(
-        SQLStatements(
-            update_statements=update_statements,
-            composition_sql=plan.composition.sql,
-            post_filter_sql=plan.post_filter.sql,
-        ),
-        dialect,
+    return SQLStatements(
+        update_statements=update_statements,
+        composition_sql=plan.composition.sql,
+        post_filter_sql=plan.post_filter.sql,
     )

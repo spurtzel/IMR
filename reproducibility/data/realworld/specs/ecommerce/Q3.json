@@ -1,10 +1,5 @@
 {
  "name": "ecommerce_Q3",
- "suite_metadata": {
-  "pattern_length": 4,
-  "shape": "chain",
-  "doc": "Brand switching / competitor capture: viewed one brand, bought a different one in the session.; switched brand then carted and bought"
- },
  "variables": [
   {
    "name": "A",

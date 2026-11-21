@@ -4,6 +4,7 @@ set -euo pipefail
 # Runs `benchmark.sql` statement-by-statement over Trino's HTTP API and measures
 # wall-clock time per statement.
 # Repeats the whole benchmark RUNS times and writes per-run + averaged summaries.
+# Usage: execution/run_benchmark.sh [flags]
 #
 # Optional parameterized SQL generation:
 #   This repo can generate a benchmark SQL on-the-fly via `python3 execution/cli.py emit-sql`.
@@ -22,12 +23,13 @@ set -euo pipefail
 #     --workload-seed N     (default: 0)
 #     --query-spec NAME     (default: canonical_r_b_m)
 #     --query-spec-file PATH (external restricted QuerySpec JSON)
-#     --strategies CSV      (default: S0,S1,S2,S3,S4; e.g. S1,S2,S3,S4)
+#     --strategies CSV      (strategy ids; default: none)
+#     --explicit-cover CSV  (view names of the cover to run)
 #     --no-generate         (force using the provided SQL file as-is)
 #     --with-correctness    (include tuple-level correctness checks)
 #     --query-batches CSV   (1-based query batches; 'none' for update-only)
 #     --correctness-total-events N (cap generated correctness data at <=5000)
-#     --MR-postprocessing   (use MATCH_RECOGNIZE-based post-processing for S2/S4)
+#     --MR-postprocessing   (use MATCH_RECOGNIZE-based post-processing)
 #     --dump-qep            (dump EXPLAIN distributed JSON plans for update/compose statements)
 #     --cost-model-validation  (enable per-operator cost-model validation mode)
 #     --selectivities PATH     (JSON file required by --cost-model-validation)
@@ -40,7 +42,7 @@ set -euo pipefail
 #                              runs execution/load_external_events.py before the stream)
 #
 # Output directory:
-#   results_bench/<timestamp>/
+#   execution/results_bench/<timestamp>/
 #     run1_trino.log, run1_timings.csv, run1_timings_summary.csv
 #     run1_memory_query_summary.csv
 #     run1_memory_state.csv, run1_memory_state_summary.csv
@@ -85,8 +87,6 @@ COST_MODEL_VALIDATION=0
 SELECTIVITIES=""
 SELECTIVITY_MODE=""
 TRINO_JOIN_REORDERING="${TRINO_JOIN_REORDERING:-default}"
-# Intra-query parallelism pin: 1 (default) sets SET SESSION task_concurrency = 1,
-# disabling intra-query operator parallelism; "default" leaves the engine default.
 TRINO_TASK_CONCURRENCY="${TRINO_TASK_CONCURRENCY:-1}"
 EXTERNAL_EVENTS_MANIFEST="${EXTERNAL_EVENTS_MANIFEST:-}"
 
@@ -293,8 +293,6 @@ if [[ "$COST_MODEL_VALIDATION" -eq 1 ]]; then
 fi
 
 if [[ -n "$EXTERNAL_EVENTS_MANIFEST" ]]; then
-  # A prewritten benchmark.sql still contains the in-Trino generated_events
-  # CTAS and would silently clobber the loaded external table.
   if [[ "$NO_GENERATE" -eq 1 || "$GENERATE_SQL" -ne 1 ]]; then
     echo "EXTERNAL_EVENTS_MANIFEST requires benchmark SQL generation; do not use --no-generate or a prewritten SQL file" >&2
     exit 2
@@ -381,7 +379,6 @@ if [[ "$GENERATE_SQL" -eq 1 ]]; then
     GEN_ARGS+=(--strategies "$STRATEGIES")
   fi
   if [[ -n "$EXPLICIT_COVER" ]]; then
-    # a clique_grow/edge_cover pick: emit-sql rebuilds this cover directly (needs the selectivities)
     GEN_ARGS+=(--explicit-cover "$EXPLICIT_COVER" --selectivities "$SELECTIVITIES")
   fi
   GEN_ARGS+=(--composition-plan-idx "$COMPOSITION_PLAN_IDX")
@@ -419,8 +416,6 @@ if [[ "$GENERATE_SQL" -eq 1 ]]; then
 fi
 
 if [[ -n "$EXTERNAL_EVENTS_MANIFEST" ]]; then
-  # Idempotent: a matching fingerprint in generated_events_meta makes this a
-  # cheap no-op, so per-cell invocations do not reload identical data.
   python3 "$SCRIPT_DIR/load_external_events.py" \
     --manifest "$EXTERNAL_EVENTS_MANIFEST" \
     --trino-server "$TRINO_SERVER" \
@@ -677,14 +672,9 @@ if not statements:
 
 
 def configure_runner_session(runner: TrinoHttpRunner) -> None:
-    # Runaway-statement guard: EIMER_QUERY_MAX_RUN_TIME (e.g. '5m') makes Trino kill any
-    # statement that exceeds it; the runner then exits non-zero and the sweep records the
-    # candidate as failed and moves on (the fast plans still get measured).
     _qmrt = os.environ.get("EIMER_QUERY_MAX_RUN_TIME", "").strip()
     if _qmrt:
         runner.execute(f"SET SESSION query_max_run_time = '{_qmrt}'")
-    # Intra-query parallelism pin: task_concurrency=1 disables intra-query operator
-    # parallelism; "default" leaves the engine default.
     if trino_task_concurrency not in {"", "default"}:
         ok, _query_id, _payload, error, _cols, _rows = runner.execute(
             f"SET SESSION task_concurrency = {int(trino_task_concurrency)}"
@@ -900,7 +890,6 @@ def parse_cache_layout_from_create_statement(statement: str) -> tuple[str, int] 
 
     if column_count <= 0:
         column_count = 2
-    # Approximate logical bytes as 8 bytes per projected column.
     row_width_bytes = column_count * 8
     return (table_name, row_width_bytes)
 
@@ -1345,7 +1334,7 @@ def dump_statement_query_stats(
     batch = int(meta["batch"])
     try:
         info, _err = runner._request_json(url=f"{runner.base_url}/v1/query/{query_id}", method="GET")
-    except Exception as exc:  # never fail the run on a stats fetch
+    except Exception as exc:
         return {"ok": False, "error": str(exc)}
     qs_dir = out_dir / f"run{run_idx}_query_stats" / f"strategy_{sanitize_for_path(strategy)}" / f"batch_{batch:03d}"
     qs_dir.mkdir(parents=True, exist_ok=True)
@@ -1421,7 +1410,6 @@ def log_statement_result(*, lf, run_label: str, i: int, meta: dict, query_id: st
     )
     if not ok:
         lf.write(f"[{run_label}] error={error}\n")
-    # Flush after each statement log entry so tail -f reflects long-running progress.
     lf.flush()
 
 
@@ -1539,10 +1527,6 @@ for run_idx in range(1, runs + 1):
             t1 = time.monotonic_ns()
             wall_ms = int(round((t1 - t0) / 1_000_000))
             peak_memory = extract_peak_memory(payload)
-            # EXPLAIN ANALYZE capture runs AFTER the timed execute so it never warms the
-            # source tables for the timed statement (keeping timing cold); the read-only
-            # SELECT it re-runs reads the same state, so one DUMP_EXPLAIN_ANALYZE=1 pass
-            # yields clean timing and the per-operator QEP together.
             if dump_explain_analyze and ok and str(meta.get("phase")) in ("update", "compose"):
                 ea = dump_statement_explain_analyze(
                     runner=runner,
@@ -1560,8 +1544,6 @@ for run_idx in range(1, runs + 1):
                     if not ea["ok"] and ea.get("error"):
                         lf.write(f"[run{run_idx}] explain_analyze_error={ea['error']}\n")
                     lf.flush()
-            # Preserve the update INSERT's per-operator stats (the sink the EXPLAIN ANALYZE
-            # SELECT cannot show); update phase only.
             if dump_explain_analyze and ok and str(meta.get("phase")) == "update" and query_id:
                 qs = dump_statement_query_stats(
                     runner=runner, run_idx=run_idx, stmt_index=i, meta=meta,
@@ -1924,7 +1906,6 @@ for run_idx in range(1, runs + 1):
         print(f"Wrote {correctness_by_batch_csv}")
 
 
-# Average per (strategy,batch,phase)
 avg_summary_csv = out_dir / "timings_summary_avg.csv"
 keys = sorted(set().union(*[set(t.keys()) for t in run_totals]))
 with avg_summary_csv.open("w", newline="", encoding="utf-8") as f:
@@ -1937,7 +1918,6 @@ with avg_summary_csv.open("w", newline="", encoding="utf-8") as f:
 print(f"Wrote {avg_summary_csv}")
 
 
-# Average peak query memory per (strategy,batch,phase)
 avg_memory_query_csv = out_dir / "memory_query_summary_avg.csv"
 memory_query_keys = sorted(set().union(*[set(d.keys()) for d in run_memory_query])) if run_memory_query else []
 with avg_memory_query_csv.open("w", newline="", encoding="utf-8") as f:
@@ -1961,7 +1941,6 @@ with avg_memory_query_csv.open("w", newline="", encoding="utf-8") as f:
 print(f"Wrote {avg_memory_query_csv}")
 
 
-# Average approach state footprint per (strategy,batch)
 avg_memory_state_csv = out_dir / "memory_state_summary_avg.csv"
 memory_state_keys = sorted(set().union(*[set(d.keys()) for d in run_memory_state])) if run_memory_state else []
 with avg_memory_state_csv.open("w", newline="", encoding="utf-8") as f:
@@ -1975,8 +1954,6 @@ with avg_memory_state_csv.open("w", newline="", encoding="utf-8") as f:
 print(f"Wrote {avg_memory_state_csv}")
 
 
-# Per-strategy totals: sum over all benchmarked batches and phases
-# (update/compose/post_filter/query, plus load/watermark).
 totals_avg_csv = out_dir / "timings_totals_avg.csv"
 perf_phases = ["load", "update", "compose", "post_filter", "query", "watermark"]
 extra_phases = ["correctness"]

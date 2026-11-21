@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The selection-time figure (Section 7.3): the selection time of clique-grow (solid) and of the edge cover (dashed) over
-the pattern length k, one colour per topology, from the records of selection_time.py.
+the pattern length k, one color per topology, from the records of selection_time.py.
 
   plot_selection_time.py <results dir> <figure dir>     writes <figure dir>/selection_time.{pdf,png}
 """

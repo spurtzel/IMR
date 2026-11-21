@@ -27,7 +27,6 @@ from eimer.models import (
 from eimer.plans.strategy_space import strategy_coverage
 
 
-# matches a qualified equality like ,,a.x = b.y'' (table.column on both sides of ,,='')
 _QUALIFIED_EQ_RE = re.compile(
     r"\b[A-Za-z_][A-Za-z0-9_]*\s*\.\s*[A-Za-z_][A-Za-z0-9_]*\s*=\s*"
     r"[A-Za-z_][A-Za-z0-9_]*\s*\.\s*[A-Za-z_][A-Za-z0-9_]*\b"
@@ -107,10 +106,8 @@ def _cover_sort_key(cover: CompositionCover, positions: Dict[str, int]) -> Tuple
 def enumerate_composition_covers(strategy: Strategy, dep_graph: DependencyGraph) -> List[CompositionCover]:
     """enumerate query-composition leaf covers for a fixed materialization strategy.
 
-    the first cover keeps all maintained strategy views plus singleton fillers for
-    uncovered variables; the rest allow maintained views to be omitted from composition
-    while still being maintained as update helpers.
-    """
+    the first cover holds all maintained strategy views plus singleton fillers for uncovered
+    variables; the others omit some maintained views from composition (they stay maintained)."""
 
     ordered_strategy = tuple(sorted(strategy, key=lambda view: view_sort_key(view, dep_graph.positions)))
     legacy_cover = _composition_cover_for_materialized_subset(
@@ -141,9 +138,8 @@ def enumerate_composition_covers(strategy: Strategy, dep_graph: DependencyGraph)
 
 
 def canonical_composition_cover(strategy: Strategy, dep_graph: DependencyGraph) -> CompositionCover:
-    """the canonical composition cover, ,,enumerate_composition_covers(strategy, dep_graph)[0]'' (the
-    ,,maintained views + singleton fillers'' cover), built directly without the 2^|strategy|
-    ,,combinations'' fan-out of the full enumeration."""
+    """the canonical composition cover, equal to `enumerate_composition_covers(strategy, dep_graph)[0]`
+    (maintained views plus singleton fillers)."""
     ordered_strategy = tuple(sorted(strategy, key=lambda view: view_sort_key(view, dep_graph.positions)))
     return _composition_cover_for_materialized_subset(
         ordered_strategy,
@@ -353,13 +349,9 @@ def enumerate_composition_plans(join_graph: CompositionJoinGraph, positions: Dic
 
 
 def _kruskal_lex_first_spanning_tree(join_graph: CompositionJoinGraph, positions: Dict[str, int]) -> List[ViewEdge]:
-    """the lexicographically-minimal spanning tree by ,,_edge_sort_key'', built directly via
-    Kruskal/union-find without the ,,enumerate_spanning_trees'' fan-out.
+    """the lexicographically-minimal spanning tree by `_edge_sort_key`, built with Kruskal/union-find.
 
-    over the graphic matroid of the join graph the greedy basis is the lexicographically-minimal
-    basis, so the Kruskal tree matches the tree underlying the first plan of
-    ,,enumerate_composition_plans''.
-    """
+    it is the tree underlying the first plan of `enumerate_composition_plans`."""
     nodes = join_graph.nodes
     if len(nodes) <= 1:
         return []
@@ -391,12 +383,10 @@ def construct_canonical_composition_plan(
     join_graph: CompositionJoinGraph,
     positions: Dict[str, int],
 ) -> CompositionPlan:
-    """directly construct the canonical (lexicographically-first) composition plan
-    ,,enumerate_composition_plans(join_graph, positions)[0]'' without enumerating every spanning tree.
+    """construct the canonical (lexicographically-first) composition plan, equal to
+    `enumerate_composition_plans(join_graph, positions)[0]`.
 
-    the tree comes from ,,_kruskal_lex_first_spanning_tree'' instead of enumerate-then-sort, so a
-    selector can cost the canonical plan for a strategy without paying the spanning-tree fan-out.
-    """
+    the tree comes from `_kruskal_lex_first_spanning_tree`."""
     tree_edges = _kruskal_lex_first_spanning_tree(join_graph, positions)
     sorted_edges = sorted(tree_edges, key=lambda edge: _edge_sort_key(edge, positions))
     join_types = {edge: join_graph.edges[edge].join_type for edge in sorted_edges}

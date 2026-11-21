@@ -1,5 +1,4 @@
-"""DuckDB backend: the DuckDBBackend dialect subclass.
+"""DuckDB backend: the `DuckDBBackend` dialect subclass.
 
-The DuckDB executor (execution/duckdb_client.py, the demo/duckdb_exec.py streaming
-arms) lives next to the Trino one; this package holds the dialect implementation.
+The DuckDB executor (`execution/duckdb_client.py`, `demo/duckdb_exec.py`) is outside this package.
 """

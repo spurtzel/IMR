@@ -1,4 +1,4 @@
-"""serialization and stable-key helpers for :class:,,PlanDescriptor''."""
+"""serialization and stable-key helpers for :class:`PlanDescriptor`."""
 
 from __future__ import annotations
 
@@ -111,7 +111,7 @@ def descriptor_from_json_dict(
     *,
     batch_count: int | None = None,
 ) -> PlanDescriptor:
-    """rebuild a ,,PlanDescriptor'' from a json/dict row, keeping unknown keys as metadata."""
+    """rebuild a `PlanDescriptor` from a json/dict row, keeping unknown keys as metadata."""
     try:
         kind = str(_row_value(row, "kind", "descriptor_kind"))
         strategy_id = str(row["strategy_id"])
@@ -158,7 +158,7 @@ def descriptor_from_csv_row(
     *,
     batch_count: int | None = None,
 ) -> PlanDescriptor:
-    """rebuild a ,,PlanDescriptor'' from a CSV row."""
+    """rebuild a `PlanDescriptor` from a CSV row."""
     return descriptor_from_json_dict(row, batch_count=batch_count)
 
 

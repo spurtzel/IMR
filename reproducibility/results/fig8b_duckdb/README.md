@@ -13,7 +13,6 @@
 | Event types | five, each at 20 % of the rows |
 | Query schedule | after every batch |
 
-Over N, EIMER is 18x to 103x faster than the transpiled query, which does not finish from N = 500,000; EIMER takes 0.16 s to
-357 s. Over k, EIMER is 28x to 34x faster. Bars: peak memory above the loaded table.
-
 ![Fig. 8b](duckdb_N_k.png)
+
+Lines: runtime; bars: peak memory above the loaded table.

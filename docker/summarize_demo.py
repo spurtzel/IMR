@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Demo verdict: read every phase's artifacts, print a human summary, exit 0 iff
-every gate passed. Stdlib only."""
+"""Demo summary: reads every phase's artifacts, prints a summary, and exits 0 iff every check
+passed. Stdlib only."""
 import json
 import sys
 from pathlib import Path
@@ -19,7 +19,6 @@ print("=" * 62)
 print("EIMER demo summary")
 print("=" * 62)
 
-# phase exit codes
 status = {}
 status_file = out / "phase_status.txt"
 if status_file.exists():
@@ -30,7 +29,6 @@ for name in ("frontend", "pipeline", "eimer_vs_mr", "memory_budget",
              "predicates_equi", "predicates_band_equi"):
     check(f"phase {name} exit", status.get(name) == "PASS", status.get(name, "missing"))
 
-# pipeline: the per-batch native-MR full-tuple correctness capture
 manifest = out / "pipeline" / "experiment_manifest.json"
 if manifest.exists():
     m = json.loads(manifest.read_text())
@@ -42,7 +40,6 @@ if manifest.exists():
 else:
     check("pipeline experiment_manifest.json", False, "missing")
 
-# EIMER vs MR + the predicate-class cells: every arm's identity gate + speedups
 for phase_dir, label in (("eimer_vs_mr", "EIMER full-tuple identity gates"),
                          ("predicates_equi", "equi-predicate identity gates"),
                          ("predicates_band_equi", "band+equi identity gates")):
@@ -61,7 +58,6 @@ for phase_dir, label in (("eimer_vs_mr", "EIMER full-tuple identity gates"),
             print(f"       {k:<18}: {v['total_ms']} ms  "
                   f"(speedup {v.get('speedup_vs_mr')}x, cover {v.get('cover')})")
 
-# memory budget: the three gates
 comp = out / "memory_budget" / "live_compliance.json"
 if comp.exists():
     g = json.loads(comp.read_text())["gates"]

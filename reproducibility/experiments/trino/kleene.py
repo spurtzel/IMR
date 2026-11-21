@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """The Kleene experiment on Trino (the two Kleene panels of the paper's Fig. 11).
 
-Part "payoff" (left panel): maintaining ONE Kleene view, the maximal runs of PATTERN (C+), over a growing table, by
-  rescan   the default maintenance: per batch, MATCH_RECOGNIZE over the whole table, the runs that end in the batch
-           are appended;
+Part "payoff" (left panel): maintaining one Kleene view, the maximal runs of PATTERN (C+), over a growing table, by
+  rescan   per batch, MATCH_RECOGNIZE over the whole table, the runs that end in the batch are appended;
   stitch   incremental maintenance: per batch, MATCH_RECOGNIZE over the window from the start of the run that was
            open at the previous batch boundary to the end of the batch; the runs are appended, and a run that
-           continued supersedes its shorter version on read (no update in place, no index).
+           continued supersedes its shorter version on read.
   Table: blocks of L matching rows at density rho = 0.5, batches of 1,000 rows; per-batch maintenance time of both
   forms on the same table, per seed.    paper: N = 100,000, L = 30, seeds 1, 2, 3
 
@@ -15,19 +14,19 @@ conditions on (A, D) and (B, D), selectivity 0.01) over the run length L of C, q
   mr              native MATCH_RECOGNIZE over the accumulated table
   eimer_nostitch  EIMER (clique-grow's pick plus the Kleene view), the Kleene view maintained by rescan
   eimer_stitch    the same strategy, the Kleene view maintained by the stitch
-  Table: one (A, B, run of L C's, D) group per 200 rows.    paper: N = 100,000 in 100 batches, L = 5, 10, 25, 50, 100
-The tables are generated with a fixed-seed hash.
+  Table: one (A, B, run of L C's, D) group per 200 rows, generated with a fixed-seed hash.
+  paper: N = 100,000 in 100 batches, L = 5, 10, 25, 50, 100
 
-Gates: payoff: both forms' views equal the runs of a single MATCH_RECOGNIZE over the final table. sweep: on the first
-1,000 events (20 batches), mr == eimer_nostitch == eimer_stitch on full tuples; on the full run, the EIMER arms are
-identical to each other and to mr where it finishes; the number of matches is the number of complete groups.
+Checks: payoff: both forms' views equal the runs of a single MATCH_RECOGNIZE over the final table. sweep: on the first
+1,000 events (20 batches), mr == eimer_nostitch == eimer_stitch on full tuples; on the full run, the EIMER approaches
+are identical to each other and to mr where it finishes; the number of matches is the number of complete groups.
 
 Axis values and limits (environment):
   EIMER_REPRO_KLEENE_PARTS=payoff,sweep
   EIMER_REPRO_KLEENE_PAYOFF_N=100000   EIMER_REPRO_KLEENE_PAYOFF_L=30   EIMER_REPRO_KLEENE_SEEDS=1,2,3
   EIMER_REPRO_KLEENE_N=100000   EIMER_REPRO_KLEENE_B=100   EIMER_REPRO_KLEENE_LS=5,10,25,50,100
   EIMER_REPRO_WALL=<s>               limit per statement (default 1,800 s)
-  EIMER_REPRO_MR_CELL_BOUND=<s>      limit for the total of the native-MR arm (default 7,200 s)
+  EIMER_REPRO_MR_CELL_BOUND=<s>      limit for the total of the native-MR approach (default 7,200 s)
 
   python3 kleene.py --list
   python3 kleene.py --only sweep_n100000_b100_L25 --results-dir <dir>
@@ -44,14 +43,13 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import trino_lib as tl  # noqa: E402  (wires the repository onto sys.path)
+import trino_lib as tl  # noqa: E402
 import trino_exec  # noqa: E402
 from trino_client import TrinoClientError  # noqa: E402
 from eimer.query.query_spec import load_query_spec_file, query_spec_to_dependency_graph  # noqa: E402
 from eimer.query.graph_adapter import collect_referenced_columns  # noqa: E402
 from eimer.selection.plan_selection_clique_grow import select_clique_grow_plan  # noqa: E402
 from eimer.sql.backend import SqlDialect, backend_for  # noqa: E402
-from eimer.sql.sql_dialect import rewrite_sql  # noqa: E402
 from eimer.sql.sql_emitter import _kleene_staging_table_name, _mr_group_detect_update_sql  # noqa: E402
 from eimer.workload import make_workload  # noqa: E402
 from eimer.models import make_view  # noqa: E402
@@ -59,9 +57,9 @@ from selectivity_payload import parse_selectivities_payload  # noqa: E402
 
 SPECS = Path(os.environ.get("EIMER_REPRO_SPECS_DIR", HERE / "specs"))
 BACKEND = backend_for(SqlDialect.TRINO)
-VRANGE = 1_000_000      # value range of the two range columns
-SIGMA = 0.01            # selectivity of the two range conditions
-P_GROUP = 200           # rows per (A, B, C-run, D) group
+VRANGE = 1_000_000
+SIGMA = 0.01
+P_GROUP = 200
 RHO, PAYOFF_BATCH = 0.5, 1000
 N_GATE, B_GATE = 1000, 20
 REFERENCE = json.loads((tl.REPRO / "reference" / "paper_trino.json").read_text())["kleene"]
@@ -109,7 +107,6 @@ def _timed(client, sql: str) -> float:
     return (time.perf_counter() - t0) * 1000.0
 
 
-# ---------------------------------------------------------------- part "payoff": one Kleene view, rescan vs. stitch
 COLS = "first_id, first_ts, first_val, last_id, last_ts, last_val, cnt"
 MEAS = ("FIRST(C.id) AS first_id, FIRST(C.ts) AS first_ts, FIRST(C.val) AS first_val, "
         "LAST(C.id) AS last_id, LAST(C.ts) AS last_ts, LAST(C.val) AS last_val, COUNT(C.id) AS cnt")
@@ -122,13 +119,13 @@ def _runs_mr(source_sql: str) -> str:
 
 
 def _dedup_select(table: str) -> str:
-    """the maximal runs of a view: per first row the longest version (applied to both forms on read)."""
+    """the maximal runs of a view."""
     return (f"SELECT first_id, last_id, cnt FROM (SELECT first_id, last_id, cnt, "
             f"ROW_NUMBER() OVER (PARTITION BY first_id ORDER BY last_ts DESC) rn FROM {table}) WHERE rn = 1")
 
 
 def payoff_rows(n: int, rho: float, l_run: int, seed: int):
-    """blocks of l_run matching rows (m = 1) every P = round(l_run / rho) rows; the seed shifts the phase; ts = id."""
+    """the table of the payoff part."""
     period = max(l_run + 1, round(l_run / rho))
     phase = (seed * 7919) % period
     for i in range(1, n + 1):
@@ -151,7 +148,7 @@ def run_payoff(c: dict, client) -> dict:
     try:
         for bi in range(1, k + 1):
             lo, hi = (bi - 1) * b + 1, bi * b
-            client.execute(f"INSERT INTO {EV} SELECT id, ts, m, val FROM {SRC} WHERE id BETWEEN {lo} AND {hi}")   # untimed: the table grows
+            client.execute(f"INSERT INTO {EV} SELECT id, ts, m, val FROM {SRC} WHERE id BETWEEN {lo} AND {hi}")
             client.execute(tl.clear_sql(f"DELETE FROM {EB}"))
             client.execute(f"INSERT INTO {EB} SELECT id, ts, m, val FROM {SRC} WHERE id BETWEEN {lo} AND {hi}")
             r_ms = _timed(client, rescan_sql)
@@ -160,7 +157,7 @@ def run_payoff(c: dict, client) -> dict:
             s_ms += _timed(client, f"INSERT INTO {ST} ({COLS}) {_runs_mr(f'SELECT id, ts, m, val FROM {EV} WHERE id BETWEEN {window_lo} AND {hi}')}")
             s_ms += _timed(client, f"INSERT INTO {CS} ({COLS}) SELECT {COLS} FROM {ST}")
             t0 = time.perf_counter()
-            nxt = client.execute(f"SELECT MIN(first_id) FROM {ST} WHERE last_id = {hi}")[1][0][0]   # the run left open at this boundary
+            nxt = client.execute(f"SELECT MIN(first_id) FROM {ST} WHERE last_id = {hi}")[1][0][0]
             s_ms += (time.perf_counter() - t0) * 1000.0
             open_a = int(nxt) if nxt is not None else None
             per_batch.append(dict(b=bi, lo=lo, hi=hi, rescan_maint_ms=round(r_ms, 2), stitch_maint_ms=round(s_ms, 2)))
@@ -180,15 +177,14 @@ def run_payoff(c: dict, client) -> dict:
     return rec
 
 
-# ---------------------------------------------------------------- part "sweep": the four-variable Kleene query
 def _h(salt: str, period: int) -> int:
     return int.from_bytes(hashlib.blake2b(f"{salt}:{period}".encode(), digest_size=8).digest(), "big") % VRANGE
 
 
 def kleene_rows(n: int, l_run: int, p_group: int):
     """per group of p_group rows: A at offset 0, B at 2, the C-run at 4 .. 3 + l_run, D at 5 + l_run, gap rows (Z)
-    elsewhere. A and B share veq (the group number), A and D share vr1, B and D share vr2 (two independent hashes of
-    the group number), so every group holds one match and other groups qualify with the conditions' selectivity."""
+    elsewhere. A and B share veq (the group number), A and D share vr1, B and D share vr2 (two hashes of the group
+    number), so every group holds one match and other groups qualify with the conditions' selectivity."""
     d_off = 5 + l_run
     assert p_group > d_off + 1
     for i in range(1, n + 1):
@@ -221,7 +217,6 @@ def kleene_spec(sigma: float) -> dict:
                       {"name": "B", "output_prefix": "b", "independent_predicate_id": "B_type"},
                       {"name": "C", "output_prefix": "c", "independent_predicate_id": "C_type", "quantifier": "PLUS"},
                       {"name": "D", "output_prefix": "d", "independent_predicate_id": "D_type"}],
-        # the gap before the Kleene variable is reluctant, so a match captures the whole run
         "pattern": {"variables": ["A", "B", "C", "D"], "wildcard": "Z", "wildcard_quantifier": "*", "gap_quantifiers": ["*", "*?", "*"]},
         "independent_predicates": [typ(v) for v in "ABCD"],
         "dependent_predicates": [
@@ -248,7 +243,7 @@ def build_spec(sigma: float) -> Path:
 
 
 def with_single_views(dep, toks: list) -> list:
-    """the views of a pick plus a view for every variable it leaves out (the Kleene variable always has its own view)."""
+    """the pick's views plus single-variable views."""
     pos = dep.positions
     covered = {x for t in toks for x in make_view(t.split("_"))}
     return sorted(set(list(toks) + [v for v in sorted(dep.variables, key=lambda v: pos[v]) if v not in covered]))
@@ -263,7 +258,7 @@ def select_pick(dep, wl, batches: int) -> list:
 @tl.track_peak
 def eimer_kleene_arm(client, dep, toks, wl, table: str, n: int, batches: int, key_cols: list, wall: float, stitch: bool):
     """EIMER on a strategy with a Kleene view: per batch the views' updates (the Kleene view by rescan or by the
-    stitch) and the composed query; ingestion untimed. Returns a record dict and the final tuple set."""
+    stitch) and the composed query. Returns a record dict and the final tuple set."""
     engine = trino_exec.TrinoEngine(client)
     engine.set_wall(wall)
     hist, bat = "hist_bp", "bat_bp"
@@ -271,7 +266,7 @@ def eimer_kleene_arm(client, dep, toks, wl, table: str, n: int, batches: int, ke
     result_q = (getattr(st, "post_filter_sql", "") or st.composition_sql).rstrip().rstrip(";")
     kleene_vars = {v for v in dep.variables if dep.quantifiers.get(v) in ("PLUS", "RELUCTANT_PLUS")}
     cols_by_var = collect_referenced_columns(dep)
-    views = []   # (cache table, column list or None, SELECT, Kleene variable or None)
+    views = []
     for u in st.update_statements:
         m = re.match(r"\s*INSERT\s+INTO\s+(cache_\w+)\s*(\(([^)]*)\))?\s*", u, re.I)
         cache, cols = m.group(1), m.group(3)
@@ -290,13 +285,13 @@ def eimer_kleene_arm(client, dep, toks, wl, table: str, n: int, batches: int, ke
             engine.execute(f"CREATE TABLE {t} AS SELECT * FROM {table} WITH NO DATA")
         for cache, cols, sel, var in views:
             engine.drop_table(cache)
-            engine.execute(f"CREATE TABLE {cache} AS {sel}")   # empty staging: an empty view with the statement's columns
+            engine.execute(f"CREATE TABLE {cache} AS {sel}")
             if var and stitch:
                 engine.drop_table(stg[var])
                 engine.execute(f"CREATE TABLE {stg[var]} AS SELECT * FROM {cache} WITH NO DATA")
         for b in range(1, batches + 1):
             lo, hi = ((b - 1) * n) // batches, (b * n) // batches
-            engine.drop_table(bat)   # ingestion, untimed
+            engine.drop_table(bat)
             engine.execute(f"CREATE TABLE {bat} AS SELECT * FROM {table} WHERE id > {lo} AND id <= {hi}")
             engine.execute(f"INSERT INTO {hist} SELECT * FROM {bat}")
             b_upd = b_kl = 0.0
@@ -305,11 +300,11 @@ def eimer_kleene_arm(client, dep, toks, wl, table: str, n: int, batches: int, ke
                     b_upd += _timed(client, f"INSERT INTO {cache} {sel}")
                 elif not stitch:
                     b_kl += _timed(client, f"INSERT INTO {cache} ({cols}) {sel}")
-                else:   # the window from the run left open at the previous boundary (or the batch start) to the batch end
+                else:
                     redetect_lo = open_a[var] if open_a[var] is not None else lo + 1
                     raw = _mr_group_detect_update_sql(var, dep, cols_by_var, hist, bat, redetect_lo=redetect_lo, target_table=stg[var]).rstrip().rstrip(";")
                     b_kl += _timed(client, tl.clear_sql(f"DELETE FROM {stg[var]}"))
-                    b_kl += _timed(client, rewrite_sql(raw, SqlDialect.TRINO))
+                    b_kl += _timed(client, raw)
                     b_kl += _timed(client, f"INSERT INTO {cache} ({cols}) SELECT {cols} FROM {stg[var]}")
                     t0 = time.perf_counter()
                     nxt = client.execute(f"SELECT MIN({var}_first_id) FROM {stg[var]} WHERE {var}_last_id = {hi}")[1][0][0]
@@ -371,7 +366,6 @@ def run_sweep(c: dict, client) -> dict:
                expected_matches=n // c["p_group"] if (n % c["p_group"] == 0 or (n % c["p_group"]) > 5 + l_run) else None)
     print(f"   cover {toks} | table {table}", flush=True)
 
-    # gate on the first events: native MR == EIMER (rescan) == EIMER (stitch), full tuples
     wl_g = make_workload(dep, total_events=N_GATE, batches=B_GATE, selectivities=sels, window_rule=BACKEND.window_rule)
     g_mr, g_mr_t = tl.mr_streaming(client, spec, table, N_GATE, B_GATE, [B_GATE], key_cols, T, bounded=False)
     g_ns, g_ns_t = eimer_kleene_arm(client, dep, toks, wl_g, table, N_GATE, B_GATE, key_cols, T, stitch=False)

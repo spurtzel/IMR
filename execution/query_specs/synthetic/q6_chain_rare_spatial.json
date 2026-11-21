@@ -1,13 +1,5 @@
 {
-  "name": "q6_star_rare_spatial",
-  "suite_metadata": {
-    "pattern_length": 6,
-    "shape": "star",
-    "independent_selectivity_class": "rare",
-    "dependent_predicate_strength": "canonical",
-    "band_lon": 0.05,
-    "band_lat": 0.02
-  },
+  "name": "q6_chain_rare_spatial",
   "variables": [
     {
       "name": "A",
@@ -142,60 +134,60 @@
       "selectivity_key": "A|B"
     },
     {
-      "predicate_id": "A_C_spatial",
+      "predicate_id": "B_C_spatial",
       "kind": "dependent",
       "variables": [
-        "A",
+        "B",
         "C"
       ],
-      "sql_template": "C.lon BETWEEN A.lon - 0.05 AND A.lon + 0.05 AND C.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02",
+      "sql_template": "C.lon BETWEEN B.lon - 0.05 AND B.lon + 0.05 AND C.lat BETWEEN B.lat - 0.02 AND B.lat + 0.02",
       "referenced_columns": [
         "lon",
         "lat"
       ],
-      "selectivity_key": "A|C"
+      "selectivity_key": "B|C"
     },
     {
-      "predicate_id": "A_D_spatial",
+      "predicate_id": "C_D_spatial",
       "kind": "dependent",
       "variables": [
-        "A",
+        "C",
         "D"
       ],
-      "sql_template": "D.lon BETWEEN A.lon - 0.05 AND A.lon + 0.05 AND D.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02",
+      "sql_template": "D.lon BETWEEN C.lon - 0.05 AND C.lon + 0.05 AND D.lat BETWEEN C.lat - 0.02 AND C.lat + 0.02",
       "referenced_columns": [
         "lon",
         "lat"
       ],
-      "selectivity_key": "A|D"
+      "selectivity_key": "C|D"
     },
     {
-      "predicate_id": "A_E_spatial",
+      "predicate_id": "D_E_spatial",
       "kind": "dependent",
       "variables": [
-        "A",
+        "D",
         "E"
       ],
-      "sql_template": "E.lon BETWEEN A.lon - 0.05 AND A.lon + 0.05 AND E.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02",
+      "sql_template": "E.lon BETWEEN D.lon - 0.05 AND D.lon + 0.05 AND E.lat BETWEEN D.lat - 0.02 AND D.lat + 0.02",
       "referenced_columns": [
         "lon",
         "lat"
       ],
-      "selectivity_key": "A|E"
+      "selectivity_key": "D|E"
     },
     {
-      "predicate_id": "A_F_spatial",
+      "predicate_id": "E_F_spatial",
       "kind": "dependent",
       "variables": [
-        "A",
+        "E",
         "F"
       ],
-      "sql_template": "F.lon BETWEEN A.lon - 0.05 AND A.lon + 0.05 AND F.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02",
+      "sql_template": "F.lon BETWEEN E.lon - 0.05 AND E.lon + 0.05 AND F.lat BETWEEN E.lat - 0.02 AND E.lat + 0.02",
       "referenced_columns": [
         "lon",
         "lat"
       ],
-      "selectivity_key": "A|F"
+      "selectivity_key": "E|F"
     }
   ],
   "measures": [

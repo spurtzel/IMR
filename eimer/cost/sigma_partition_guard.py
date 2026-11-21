@@ -1,12 +1,10 @@
 """runtime invariant checks for sigma placement in the cost model.
 
-each dependency edge must be applied exactly once across the composition cover: internalized when both
-its variables sit in one view leaf, deferred when it crosses a composition join cut. maintained helper
-views omitted from composition are not part of the query-result sigma partition.
+each dependency edge is applied exactly once across the composition cover: internalized when both
+its variables sit in one view leaf, deferred when it crosses a composition join cut. maintained
+helper views omitted from composition are not part of the query-result sigma partition.
 
-the strict ,,== 1'' rule is enforced only for non-nested plans; nested covers (e.g. ,,{R}'' joined with
-,,{R, M}'') reuse the same edge across materialized outputs, so it does not apply to them.
-"""
+the `== 1` check applies to non-nested plans only."""
 
 from __future__ import annotations
 

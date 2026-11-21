@@ -7,19 +7,19 @@ second, seed 42; the query runs after every batch. Two axes:
   N   table size at 200 events per batch (B = N / 200), k = 4      paper: 2k, 5k, 10k, 25k, 50k, 100k, 250k
   k   pattern length at N = 5,000, B = 25                          paper: 3 .. 8
 
-Arms (each on the same Iceberg table, one after the other, single-threaded, join reordering off, no warm-up of the approaches):
+Approaches (each on the same Iceberg table, single-threaded, join reordering off):
   mr      native MATCH_RECOGNIZE over the accumulated table, the window also stated on the gap variable
   eimer   clique-grow's pick: per-batch view updates + the composed query (ingestion untimed)
   gdyn    reduced sets per variable, maintained per batch, result enumerated per query (gdyn.py; ingestion untimed)
 
-Gates: mr == eimer and gdyn == eimer on full tuples; the number of matches equals the paper's where recorded.
-A baseline that did not finish at a smaller value of an axis is not run again at larger values (reported as censored).
+Checks: mr == eimer and gdyn == eimer on full tuples; the number of matches equals the paper's where recorded.
+An approach that did not finish at a smaller value of an axis is not run at larger values (reported as censored).
 
 Axis values and limits (environment):
   EIMER_REPRO_TRINO_NS=2000,5000        EIMER_REPRO_TRINO_KS=3,4,5
   EIMER_REPRO_WALL=<s>                  limit per statement (default 1,800 s) and for GDYN's total (1,800 s; 3,600 s from N 100k)
-  EIMER_REPRO_MR_CELL_BOUND=<s>         limit for the total of the native-MR arm (default 7,200 s)
-  EIMER_REPRO_ARMS=mr,eimer,gdyn        the arms to run
+  EIMER_REPRO_MR_CELL_BOUND=<s>         limit for the total of the native-MR approach (default 7,200 s)
+  EIMER_REPRO_ARMS=mr,eimer,gdyn        the approaches to run
 
   python3 fig8.py --list                         the workloads, in execution order
   python3 fig8.py --only k4_n2000_b10_w1000 --results-dir <dir>
@@ -34,9 +34,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import trino_lib as tl  # noqa: E402  (wires the repository onto sys.path)
+import trino_lib as tl  # noqa: E402
 import gdyn  # noqa: E402
-import common  # noqa: E402  (demo/common.py)
+import common  # noqa: E402
 from workload.data.datagen import generate_events  # noqa: E402
 from eimer.query.query_spec import load_query_spec_file, query_spec_to_dependency_graph  # noqa: E402
 from eimer.selection.plan_selection_clique_grow import select_clique_grow_plan  # noqa: E402
@@ -65,7 +65,7 @@ def cell_name(c: dict) -> str:
 
 
 def cells() -> list:
-    """the N axis ascending, then the k axis ascending (the order the censoring rule needs)."""
+    """the workloads in execution order."""
     out: dict = {}
     for n in sorted(NS):
         c = {**CENTER, "n": n, "batches": n // 200}
@@ -85,7 +85,7 @@ def gdyn_limit(c: dict) -> int:
 
 
 def build_spec(k: int, w_ms: int) -> Path:
-    """the stored chain query of length k on the generator's schema plus the window as a (first, last) condition."""
+    """the chain query of length k."""
     assert w_ms % 1000 == 0
     spec = json.loads(Path(common.patch_spec_for_datagen(k, "chain")).read_text())
     vs = spec["pattern"]["variables"]
@@ -103,7 +103,7 @@ def build_spec(k: int, w_ms: int) -> Path:
 
 
 def censored_by_smaller(c: dict, arm: str, records: Path):
-    """the smallest axis value at which ,,arm'' did not finish in an existing record of the same axis, if below this cell."""
+    """the smallest axis value at which `arm` did not finish in an existing record of the same axis, if below this cell."""
     hits = []
     for f in records.glob("*.json"):
         r = json.loads(f.read_text())
@@ -170,7 +170,6 @@ def run_cell(c: dict, out_root: Path) -> dict:
     print(f"[{name}] N={n} B={B} k={k} W={c['w_ms']} ms | pick {toks} ({selection['executed']}; this run selects {pick_live}) | "
           f"{rec['engine']} {rec['catalog']}.{rec['schema']} | limits {rec['limits']}", flush=True)
 
-    # EIMER first: its result is the reference of the gates
     e_tuples = None
     if "eimer" in ARMS:
         rec["eimer"], e_tuples = tl.eimer_streaming(client, dep, ptoks, all_vars, wl, spec, table, n, B, qb, key_cols, T)

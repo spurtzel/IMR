@@ -6,10 +6,10 @@ The figure of the paper varies two axes around it:
   N1000  the table size at a constant batch size of 1,000 events (B = N / 1,000)
   k      the pattern length at N = 25,000, B = 25
 
-The axis values can be reduced or extended without editing this file:
+Environment variables:
   EIMER_REPRO_DUCKDB_NS=5000,10000,25000      table sizes of the N1000 axis (multiples of 1,000)
-  EIMER_REPRO_DUCKDB_KS=3,4,5                 pattern lengths of the k axis (3..8: the cached transpiler output)
-  EIMER_REPRO_WALL=600                        time limit in seconds per statement and per arm (default: tiers below)
+  EIMER_REPRO_DUCKDB_KS=3,4,5                 pattern lengths of the k axis (3..8)
+  EIMER_REPRO_WALL=600                        time limit in seconds per statement and per approach (default: tiers below)
 """
 from __future__ import annotations
 
@@ -19,13 +19,12 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-EIMER_REPO = Path(os.environ.get("EIMER_REPO", HERE.parents[2]))   # the repository root (eimer/, demo/, execution/, workload/)
+EIMER_REPO = Path(os.environ.get("EIMER_REPO", HERE.parents[2]))
 for _p in (str(EIMER_REPO), str(EIMER_REPO / "execution"), str(EIMER_REPO / "demo")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
 HALF_WIDTH = 0.02
-# the generated query specifications (one per pattern length); EIMER_REPRO_SPECS_DIR points them at a writable directory
 SPECS = Path(os.environ.get("EIMER_REPRO_SPECS_DIR", HERE / "specs"))
 CENTER = dict(k=4, n=25_000, batches=25, w_ms=60, sigma=0.2, ftype=0.2, ntypes=5, seed=42)
 PAPER_NS = (5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000)
@@ -44,14 +43,12 @@ assert all(3 <= k <= 8 for k in _KS), f"k axis: 3..8 (the cached transpiler outp
 
 AXES = {
     "N": ("n", [5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000]),
-    "W": ("w_ms", [20, 40, 60]),  # capped: the transpiler aborts past 64 rows per match
+    "W": ("w_ms", [20, 40, 60]),
     "B": ("batches", [5, 25, 100, 250, 500, 1000]),
-    "k": ("k", _KS),  # beyond the five types of the center, variables reuse the types cyclically
-    # the N axis at a CONSTANT batch size of 1,000 events (the center's 25k / 25), B = N / 1,000, so the stream length is
-    # varied alone; 25k = the center. Dict values set two parameters.
+    "k": ("k", _KS),
     "N1000": ("n", [dict(n=n, batches=n // 1000) for n in _NS]),
 }
-REPRO_AXES = ("N1000", "k")   # the two panels of the paper's figure
+REPRO_AXES = ("N1000", "k")
 CHAIN_SPEC = {k: f"q{k}_chain_rare_spatial" for k in (3, 4, 5, 6, 7, 8)}
 
 
@@ -60,21 +57,20 @@ def cell_name(c: dict) -> str:
 
 
 def cells(axes: tuple | None = None) -> list[dict]:
-    """every cell with the axes it belongs to (the center appears in all); ascending hardness."""
+    """every cell with the axes it belongs to."""
     out: dict[str, dict] = {}
     for axis, (param, values) in AXES.items():
         if axes and axis not in axes:
             continue
         for v in values:
-            c = {**CENTER, **v} if isinstance(v, dict) else {**CENTER, param: v}   # a dict value sets several parameters (N1000)
+            c = {**CENTER, **v} if isinstance(v, dict) else {**CENTER, param: v}
             rec = out.setdefault(cell_name(c), {**c, "axes": []})
             rec["axes"].append(axis)
     return sorted(out.values(), key=lambda c: (c["n"], c["batches"], c["k"], c["w_ms"]))
 
 
 def wall_seconds(c: dict) -> int:
-    """per-statement and per-arm time limit: 1,800 s below 100k rows, 3,600 s to 250k, 7,200 s beyond; 7,200 s as well
-    for 500 and 1,000 batches (the transpiled total grows linearly with B). EIMER_REPRO_WALL overrides."""
+    """per-statement and per-approach time limit: 1,800 s below 100k rows, 3,600 s to 250k, 7,200 s beyond and for 500 and 1,000 batches. EIMER_REPRO_WALL overrides."""
     if os.environ.get("EIMER_REPRO_WALL"):
         return int(os.environ["EIMER_REPRO_WALL"])
     if c["batches"] >= 500:
@@ -87,11 +83,11 @@ def spec_name(k: int, w_ms: int) -> str:
 
 
 def build_spec(k: int, w_ms: int) -> Path:
-    src = EIMER_REPO / "execution" / "query_specs" / "overnight_suite" / f"{CHAIN_SPEC[k]}.json"
+    src = EIMER_REPO / "execution" / "query_specs" / "synthetic" / f"{CHAIN_SPEC[k]}.json"
     spec = json.loads(src.read_text())
     var_order = list(spec["pattern"]["variables"])
     assert len(var_order) == k, (src, var_order)
-    type_for = {v: f"T{i % CENTER['ntypes']}" for i, v in enumerate(var_order)}  # cyclic beyond the center's types
+    type_for = {v: f"T{i % CENTER['ntypes']}" for i, v in enumerate(var_order)}
     for p in spec["independent_predicates"]:
         v = p["variables"][0]
         p["sql_template"] = f"{v}.primary_type = '{type_for[v]}'"
@@ -111,7 +107,7 @@ def build_spec(k: int, w_ms: int) -> Path:
     spec["suite_metadata"] = {**spec.get("suite_metadata", {}), "window_ms": w_ms, "source": CHAIN_SPEC[k]}
     out = SPECS / f"{spec_name(k, w_ms)}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_suffix(f".{os.getpid()}.tmp")  # several parallel cells write the same spec: atomic replace
+    tmp = out.with_suffix(f".{os.getpid()}.tmp")
     tmp.write_text(json.dumps(spec, indent=2) + "\n"); os.replace(tmp, out)
     return out
 
@@ -124,15 +120,15 @@ def load_spec(k: int, w_ms: int):
 
 
 def generate_frame(c: dict):
-    """the repository's generator, deterministic (seed) at the cell's rate/types/sigma."""
-    import common  # demo/common.py
+    """the repository's generator at the cell's parameters."""
+    import common
     from workload.data.datagen import generate_events
     cfg = common.make_datagen_config(c["n"], c["sigma"], ftype=c["ftype"], ntypes=c["ntypes"], seed=c["seed"])
     return generate_events(cfg).frame
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--list":  # the reproduction's cell names, longest expected first
+    if len(sys.argv) > 1 and sys.argv[1] == "--list":
         for c in sorted(cells(REPRO_AXES), key=lambda c: -(c["n"] * c["batches"] * c["k"])):
             print(cell_name(c))
         raise SystemExit(0)

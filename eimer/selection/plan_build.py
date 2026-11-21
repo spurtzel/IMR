@@ -1,11 +1,8 @@
 """shared plan-building helpers for the cover selectors.
 
-build_plan turns a (family, compose cover) into a materialized StrategyWithPlans and its
-EvaluationPlan: a bushy compose join order grafted onto the canonical composition plan, and
-bushy update source trees. valid_views enumerates the valid views a selector may pick, and
-with_kleene_caches forces the mandatory Kleene singleton views. clique_grow and edge_cover
-both build on these.
-"""
+`build_plan` turns a (family, compose cover) into a materialized `StrategyWithPlans` and its
+`EvaluationPlan`. `valid_views` enumerates the valid views a selector may pick, and
+`with_kleene_caches` adds the Kleene singleton views."""
 import dataclasses
 import itertools
 
@@ -33,8 +30,7 @@ def valid_views(dep):
             ok = True
             for a, b in zip(sel, sel[1:]):
                 if pos[b] - pos[a] == 1:
-                    continue  # contiguous step
-                # gap: need an edge inside the view spanning it (pos(x) <= pos(a) < pos(b) <= pos(y))
+                    continue
                 if not any(min(pos[x] for x in e) <= pos[a] and max(pos[x] for x in e) >= pos[b]
                            for e in edges if e <= set(combo)):
                     ok = False; break
@@ -48,18 +44,17 @@ def label(family, positions):
 
 
 def with_kleene_caches(dep, family, compose_views, all_vars):
-    """force every Kleene variable as its own singleton materialized view. Kleene vars carry no
-    value edge, so selectors never cover them; unforced they auto-fill as base-scan compose
-    nodes, which the build rejects. inject {K} into both the family and the compose cover."""
+    """add every Kleene variable as its own singleton materialized view, in both the family and the
+    compose cover."""
     ks = {make_view([v]) for v in all_vars if is_kleene_variable(v, dep)}
     return set(family) | ks, set(compose_views) | ks
 
 
 def build_plan(dep, family, compose_views, all_vars, *, workload):
     """(family, compose cover) -> (StrategyWithPlans, EvaluationPlan, nodes). uncovered variables
-    become base-scan compose nodes; compose join order is the bushy tree grafted onto the canonical
-    compose plan, update sources are bushy source trees. both are cost-DP over the workload
-    selectivities, so a workload is required."""
+    become base-scan compose nodes; the compose join order is a bushy tree and update sources
+    are bushy source trees, both chosen by cost-DP over the workload selectivities (a workload
+    is required)."""
     if workload is None:
         raise ValueError("plan_build requires a workload: bushy compose/update need a sigma source")
     family, compose_views = with_kleene_caches(dep, family, compose_views, all_vars)
@@ -78,8 +73,8 @@ def build_plan(dep, family, compose_views, all_vars, *, workload):
 
 @dataclasses.dataclass(frozen=True)
 class PlanResult:
-    """a selector's pick plus its materialized plan. ,,strategy'' and ,,evaluation_plan'' are built once on
-    the winning (family, compose) so callers do not have to re-run build_plan to render the plan."""
+    """a selector's pick plus its materialized plan: `strategy` and `evaluation_plan` for the
+    winning (family, compose)."""
     family: frozenset
     compose: frozenset
     score: float

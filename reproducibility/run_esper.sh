@@ -2,14 +2,13 @@
 # Fig. 8c: EIMER's strategies on Esper vs. Esper's native match_recognize, over the table size N and the pattern
 # length k.
 #   bash reproducibility/run_esper.sh                                          the small default
-#   NS=2000,5000,10000,25000 KS=3,4,5,6 bash reproducibility/run_esper.sh      own axis values (SCALE=paper: those of our runs)
+#   NS=2000,5000,10000,25000 KS=3,4,5,6 bash reproducibility/run_esper.sh      own axis values (SCALE=paper: the paper's)
 # Results: reproducibility/out/esper/ (records, summary.md, figs/esper_N_k.pdf). The exit code is 0 if every check passed.
 # Parameters: reproducibility/README.md.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 IMAGE=eimer-experiments
 DOCKER="${DOCKER:-docker}"
-# the result files must belong to the calling user
 if [ "$(basename "$DOCKER")" = podman ]; then USERARGS=(--userns=keep-id); else USERARGS=(--user "$(id -u):$(id -g)"); fi
 if [ "${SKIP_BUILD:-0}" = "1" ]; then
   echo "== [1/2] SKIP_BUILD=1: using the existing image ($IMAGE)"

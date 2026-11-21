@@ -1,6 +1,6 @@
-"""Plot style of the paper's figures: helpers on top of eimer_style.mplstyle (colour, marker and label per approach,
-figure sizes, hatched bars, saving as .png and .pdf). ,,apply()'' loads the style; ,,apply(usetex=False)'' is the
-fallback without a LaTeX install.
+"""Plot style of the paper's figures: helpers on top of eimer_style.mplstyle (color, marker and label per approach,
+figure sizes, hatched bars, saving as .png and .pdf). `apply()` loads the style; `apply(usetex=False)` loads it
+without LaTeX.
 """
 from __future__ import annotations
 import warnings

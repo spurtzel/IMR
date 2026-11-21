@@ -1,10 +1,5 @@
 {
  "name": "chicago_Q4",
- "suite_metadata": {
-  "pattern_length": 5,
-  "shape": "chain",
-  "doc": "neighborhood crime spiral -- burglary, theft, vehicle theft, damage, battery"
- },
  "variables": [
   {
    "name": "A",

@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
-"""Demo: plan-selection quality + EIMER vs a stateless baseline.
+r"""Demo: plan-selection quality + EIMER vs a stateless baseline.
 
 Runs one small streaming cell (defaults: chain, k=4, N=5000, sigma=0.05, B=5):
-generate the synthetic frame, load it into the engine, estimate selectivities with
-the b_unified estimator on the loaded table, then execute the baseline arm
+generates the synthetic frame, loads it into the engine, estimates selectivities with
+the b_unified estimator on the loaded table, then executes the baseline approach
 (cumulative re-scan per batch) and a portfolio of EIMER covers selected from those
 estimates (the clique_grow selector's pick, the edge cover when it differs from the
 pick, all-singletons).
 
 Engines (--engine): trino (default) runs native MATCH_RECOGNIZE as the baseline;
-duckdb has no native MATCH_RECOGNIZE, so the baseline is the SQL given by
---baseline-sql (a SELECT over the relation ,,events_window'', e.g. the query as
-translated by a MATCH_RECOGNIZE transpiler; the query text to translate is written
-to <out-dir>/mr_to_transpile.sql), and without it only the EIMER arms run.
+duckdb takes the baseline from --baseline-sql (a SELECT over the relation
+`events_window`, e.g. the query as translated by a MATCH_RECOGNIZE transpiler; the
+query text to translate is written to <out-dir>/mr_to_transpile.sql); without it only
+the EIMER approaches run.
 
-Each EIMER arm must pass a full-tuple identity gate against the baseline result
-before its runtime counts. Writes results.json (runtimes, gates) and a
-timing-free regression_fingerprint.json (spec + per-arm SQL + tuple-set hashes)
-under --out-dir.
+Each EIMER approach is checked for full-tuple identity against the baseline result.
+Writes results.json (runtimes, checks) and a timing-free regression_fingerprint.json
+(spec + per-approach SQL + tuple-set hashes) under --out-dir.
 
   python3 demo/run_eimer_vs_mr.py --n 5000 --k 4 --topology chain --sigma 0.05 \
       --batches 5 --catalog memory --out-dir out/demo_eimer_vs_mr
@@ -33,7 +32,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import common  # noqa: E402  (also wires repo-root + execution onto sys.path)
+import common  # noqa: E402
 import trino_exec  # noqa: E402
 import duckdb_exec  # noqa: E402
 
@@ -59,7 +58,7 @@ def _key_cols(dep) -> list[str]:
 
 
 def _arm_sql_hash(dep, toks, all_vars, wl, dialect=SqlDialect.TRINO) -> str:
-    """Deterministic (timing-free) hash of the emitter's rendered SQL for the cover."""
+    """Hash of the emitter's rendered SQL for the cover."""
     o, _plan, nodes = trino_exec.build_cover_plan(dep, list(toks), all_vars, wl)
     st = generate_sql_statements_for_cover(o, dep, nodes, o.composition_plans[0],
                                            o.update_plans[0], base_table="hist_bp",
@@ -97,14 +96,13 @@ def main() -> int:
     spec, dep, spec_path = common.load_spec_and_dep(a.k, a.topology, predicates=a.predicates)
     all_vars = set(dep.variables)
     pos = dep.positions
-    qb = frozenset(range(1, a.batches + 1))  # query every batch
+    qb = frozenset(range(1, a.batches + 1))
     key_cols = _key_cols(dep)
     out = Path(a.out_dir)
     exec_mod, dialect = ENGINES[a.engine]
     print(f"cell: {a.topology} k={a.k} N={a.n} sigma={a.sigma} B={a.batches} "
           f"predicates={a.predicates} engine={a.engine}")
 
-    # --- generate + load ---
     frame = common.generate_frame(a.n, a.sigma, seed=a.seed, predicates=a.predicates)
     table = "demo_events"
     if a.engine == "trino":
@@ -117,21 +115,17 @@ def main() -> int:
     loaded = exec_mod.load_frame(client, frame, table=table)
     assert loaded == len(frame) == a.n, (loaded, len(frame), a.n)
     print(f"loaded {loaded} rows into {where}")
-    # the query text a MATCH_RECOGNIZE transpiler must translate for the duckdb baseline
-    # (reads the relation the baseline arm re-points at each cumulative window)
     mr_text = query_spec_to_match_recognize_sql(spec, events_table=duckdb_exec.BASELINE_INPUT_VIEW)
     out.mkdir(parents=True, exist_ok=True)
     (out / "mr_to_transpile.sql").write_text(mr_text.rstrip() + ";\n")
 
-    # --- b_unified selectivities, measured on the loaded table ---
     wl, sigma_payload = exec_mod.b_unified_workload(client, dep, table=table,
                                                     total_events=a.n, batches=a.batches)
     common.write_json(out / "selectivities_b_unified.json", sigma_payload)
     print(f"b_unified estimates (generation targets: ftype={common.FTYPE}, "
           f"sigma={a.sigma}) -> {out / 'selectivities_b_unified.json'}")
 
-    # --- the cover portfolio (selected from the measured estimates) ---
-    kappa = backend_for(dialect).kappa  # the engine's calibrated maintenance-to-compose ratio
+    kappa = backend_for(dialect).kappa
     pick = select_clique_grow_plan(dep, wl, query_batches=qb, kappa=kappa)
     edge = select_edge_cover_plan(dep, wl, query_batches=qb)
     print(f"selector: clique_grow with kappa={kappa} ({dialect.value})")
@@ -146,7 +140,6 @@ def main() -> int:
     print(f"selector pick (clique_grow): {arms['clique_grow_pick']} "
           f"(certificate: {pick.certificate})")
 
-    # --- baseline arm: native MATCH_RECOGNIZE (trino) / the supplied SQL (duckdb) ---
     if a.engine == "trino":
         baseline_name = "MATCH_RECOGNIZE"
         mr_ms, mr_n, mr_tuples, _meta = trino_exec.mr_streaming(
@@ -168,7 +161,6 @@ def main() -> int:
     if mr_tuples is not None:
         tuple_sets[baseline_name] = mr_tuples
 
-    # --- EIMER arms ---
     results = ({baseline_name: dict(total_ms=mr_ms, final_count=mr_n, gate="baseline")}
                if baseline_name else {})
     fingerprints = {}
@@ -189,7 +181,6 @@ def main() -> int:
         speed = f"   speedup vs baseline = {mr_ms / ms:.2f}x" if mr_ms else ""
         print(f"{name:<18}: {ms:>10.1f} ms   gate={gate}{speed}   cover={toks}")
 
-    # --- verdicts ---
     gates = [r.get("gate") for nm, r in results.items() if nm != baseline_name]
     all_pass = all(g in ("PASSED", "UNVERIFIED") for g in gates if g != "DNF") and "FAILED" not in gates
     verdict = "ALL PASSED" if all_pass and mr_tuples is not None else ("UNVERIFIED" if all_pass else "FAILURE")

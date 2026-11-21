@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+/** Reads the data.csv event table and splits it into batches. */
 final class DataSet {
     final List<Row> rows;
     final List<Batch> batches;
@@ -24,7 +25,6 @@ final class DataSet {
         this.timestampColumn = timestampColumn;
     }
 
-    /** SHA-256 (first 16 hex chars) of data.csv as read, for the driver's identity assertion. */
     static String dataSha16(Path dir) throws IOException {
         try {
             java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");

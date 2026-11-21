@@ -1,24 +1,19 @@
 #!/usr/bin/env bash
-# ONE-COMMAND small-scale sensitivity analysis:  ./docker/run_small_sensitivity_analysis.sh
-#
-# Builds the pinned Trino-481 + pipeline images, starts Trino, runs the OAT
-# sensitivity suite (clique-grow vs native MATCH_RECOGNIZE; axes: pattern length k,
-# table size N <= 10k, batch count B at N=5000 fixed, selectivity sigma) inside the
-# container, auto-plots the results, and tears everything down.
-#
-# Outputs (host): docker/out/sensitivity/{results.json, sensitivity.png, sensitivity.pdf}
-# Exit code 0 <=> every executed cell's full-tuple identity gate passed.
-#
-# Knobs (env):
-#   WALL=600            per-query wall in seconds (an arm exceeding it = DNF, plotted as such)
+# Small-scale sensitivity analysis: builds the Trino-481 and pipeline images, starts Trino, runs
+# the one-axis-at-a-time sensitivity suite (clique-grow vs native MATCH_RECOGNIZE; axes: pattern
+# length k, table size N <= 10k, batch count B, selectivity sigma) in the container, plots the
+# results, and removes the containers.
+# Usage: ./docker/run_small_sensitivity_analysis.sh
+# Results: docker/out/sensitivity/{results.json, sensitivity.png, sensitivity.pdf}
+# Exit code 0 iff every executed cell's full-tuple identity check passed.
+# Env:
+#   WALL=600            per-query wall in seconds (an approach exceeding it is recorded as DNF)
 #   BASELINE_K=4 BASELINE_N=5000 BASELINE_B=5 BASELINE_SIGMA=0.05   the shared baseline cell
 #   KS=3,4,5  NS=1000,2500,5000,10000  BS=2,5,10  SIGMAS=0.01,0.05,0.20   the axis values
 #   TRINO_MEM=6g        memory limit for the Trino container
 #   KEEP_UP=1           leave the Trino container running afterwards
 #   TRINO_BASE_IMAGE=trinodb/trino:481
-#
-# Example: a custom sweep:
-#   BASELINE_N=8000 NS=2000,4000,8000 KS=3,4 WALL=900 ./docker/run_small_sensitivity_analysis.sh
+# Example: BASELINE_N=8000 NS=2000,4000,8000 KS=3,4 WALL=900 ./docker/run_small_sensitivity_analysis.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

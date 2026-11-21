@@ -1,13 +1,5 @@
 {
-  "name": "q7_star_rare_spatial",
-  "suite_metadata": {
-    "pattern_length": 7,
-    "shape": "star",
-    "independent_selectivity_class": "rare",
-    "dependent_predicate_strength": "canonical",
-    "band_lon": 0.05,
-    "band_lat": 0.02
-  },
+  "name": "q8_chain_rare_spatial",
   "variables": [
     {
       "name": "A",
@@ -43,6 +35,11 @@
       "name": "G",
       "output_prefix": "g",
       "independent_predicate_id": "G_type"
+    },
+    {
+      "name": "H",
+      "output_prefix": "h",
+      "independent_predicate_id": "H_type"
     }
   ],
   "pattern": {
@@ -53,7 +50,8 @@
       "D",
       "E",
       "F",
-      "G"
+      "G",
+      "H"
     ],
     "wildcard": "Z",
     "wildcard_quantifier": "*"
@@ -142,6 +140,18 @@
         "primary_type"
       ],
       "selectivity_key": "G"
+    },
+    {
+      "predicate_id": "H_type",
+      "kind": "independent",
+      "variables": [
+        "H"
+      ],
+      "sql_template": "H.primary_type = 'BATTERY'",
+      "referenced_columns": [
+        "primary_type"
+      ],
+      "selectivity_key": "H"
     }
   ],
   "dependent_predicates": [
@@ -160,74 +170,88 @@
       "selectivity_key": "A|B"
     },
     {
-      "predicate_id": "A_C_spatial",
+      "predicate_id": "B_C_spatial",
       "kind": "dependent",
       "variables": [
-        "A",
+        "B",
         "C"
       ],
-      "sql_template": "C.lon BETWEEN A.lon - 0.05 AND A.lon + 0.05 AND C.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02",
+      "sql_template": "C.lon BETWEEN B.lon - 0.05 AND B.lon + 0.05 AND C.lat BETWEEN B.lat - 0.02 AND B.lat + 0.02",
       "referenced_columns": [
         "lon",
         "lat"
       ],
-      "selectivity_key": "A|C"
+      "selectivity_key": "B|C"
     },
     {
-      "predicate_id": "A_D_spatial",
+      "predicate_id": "C_D_spatial",
       "kind": "dependent",
       "variables": [
-        "A",
+        "C",
         "D"
       ],
-      "sql_template": "D.lon BETWEEN A.lon - 0.05 AND A.lon + 0.05 AND D.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02",
+      "sql_template": "D.lon BETWEEN C.lon - 0.05 AND C.lon + 0.05 AND D.lat BETWEEN C.lat - 0.02 AND C.lat + 0.02",
       "referenced_columns": [
         "lon",
         "lat"
       ],
-      "selectivity_key": "A|D"
+      "selectivity_key": "C|D"
     },
     {
-      "predicate_id": "A_E_spatial",
+      "predicate_id": "D_E_spatial",
       "kind": "dependent",
       "variables": [
-        "A",
+        "D",
         "E"
       ],
-      "sql_template": "E.lon BETWEEN A.lon - 0.05 AND A.lon + 0.05 AND E.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02",
+      "sql_template": "E.lon BETWEEN D.lon - 0.05 AND D.lon + 0.05 AND E.lat BETWEEN D.lat - 0.02 AND D.lat + 0.02",
       "referenced_columns": [
         "lon",
         "lat"
       ],
-      "selectivity_key": "A|E"
+      "selectivity_key": "D|E"
     },
     {
-      "predicate_id": "A_F_spatial",
+      "predicate_id": "E_F_spatial",
       "kind": "dependent",
       "variables": [
-        "A",
+        "E",
         "F"
       ],
-      "sql_template": "F.lon BETWEEN A.lon - 0.05 AND A.lon + 0.05 AND F.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02",
+      "sql_template": "F.lon BETWEEN E.lon - 0.05 AND E.lon + 0.05 AND F.lat BETWEEN E.lat - 0.02 AND E.lat + 0.02",
       "referenced_columns": [
         "lon",
         "lat"
       ],
-      "selectivity_key": "A|F"
+      "selectivity_key": "E|F"
     },
     {
-      "predicate_id": "A_G_spatial",
+      "predicate_id": "F_G_spatial",
       "kind": "dependent",
       "variables": [
-        "A",
+        "F",
         "G"
       ],
-      "sql_template": "G.lon BETWEEN A.lon - 0.05 AND A.lon + 0.05 AND G.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02",
+      "sql_template": "G.lon BETWEEN F.lon - 0.05 AND F.lon + 0.05 AND G.lat BETWEEN F.lat - 0.02 AND F.lat + 0.02",
       "referenced_columns": [
         "lon",
         "lat"
       ],
-      "selectivity_key": "A|G"
+      "selectivity_key": "F|G"
+    },
+    {
+      "predicate_id": "G_H_spatial",
+      "kind": "dependent",
+      "variables": [
+        "G",
+        "H"
+      ],
+      "sql_template": "H.lon BETWEEN G.lon - 0.05 AND G.lon + 0.05 AND H.lat BETWEEN G.lat - 0.02 AND G.lat + 0.02",
+      "referenced_columns": [
+        "lon",
+        "lat"
+      ],
+      "selectivity_key": "G|H"
     }
   ],
   "measures": [
@@ -300,6 +324,16 @@
       "expression": "G.time",
       "alias": "g_time",
       "sql_type": "TIMESTAMP(6)"
+    },
+    {
+      "expression": "H.id",
+      "alias": "h_id",
+      "sql_type": "BIGINT"
+    },
+    {
+      "expression": "H.time",
+      "alias": "h_time",
+      "sql_type": "TIMESTAMP(6)"
     }
   ],
   "result_key_columns": [
@@ -316,7 +350,9 @@
     "f_id",
     "f_time",
     "g_id",
-    "g_time"
+    "g_time",
+    "h_id",
+    "h_time"
   ],
   "event_schema": [
     {

@@ -1,10 +1,5 @@
 {
  "name": "taxi_Q2",
- "suite_metadata": {
-  "pattern_length": 2,
-  "shape": "kleene",
-  "doc": "Build-up to a fare spike (Kleene FIRST): a run of CBD trips ending in a >$80 CBD trip (COUNT = CBD build-up before the spike).; buildup run (<=80) then the spike (>80) \u2014 disjoint"
- },
  "variables": [
   {
    "name": "B",

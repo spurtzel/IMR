@@ -1,11 +1,6 @@
 from __future__ import annotations
 
-"""Shared QuerySpec loading for benchmark CLIs.
-
-Registry presets and external JSON files both return the same QuerySpec object.
-External files are not registered globally; their strategy ids are scoped by
-the QuerySpec name and fingerprint recorded in artifacts.
-"""
+"""QuerySpec loading for the benchmark command lines: registry presets and external JSON files."""
 
 import argparse
 from dataclasses import dataclass

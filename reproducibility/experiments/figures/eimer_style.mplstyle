@@ -1,4 +1,4 @@
-# Plot style of the paper's figures (fonts, colours, grid, lines, output); the helpers are in plot_style.py.
+# Plot style of the paper's figures (fonts, colors, grid, lines, output); the helpers are in plot_style.py.
 
 text.usetex            : True
 font.family            : serif

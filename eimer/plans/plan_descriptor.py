@@ -1,8 +1,7 @@
 """boundary descriptors for resolving plan metadata into executable plans.
 
-,,PlanDescriptor'' is a configuration/boundary object, not the internal plan representation;
-once resolved, costing, validation, and execution all share one ,,ExecutableEvaluationPlan'' path.
-"""
+`PlanDescriptor` is a configuration object; a resolved descriptor yields an
+`ExecutableEvaluationPlan`."""
 
 from __future__ import annotations
 
@@ -20,9 +19,8 @@ from eimer.workload import Workload
 class PlanDescriptor:
     """external identifier for a concrete EIMER evaluation plan.
 
-    ,,kind="composition_variant"'' selects a generated ,,CompositionVariant'' by its index
-    and resolves to the executable-plan representation before costing or validation.
-    """
+    `kind="composition_variant"` selects a generated `CompositionVariant` by its index
+    and resolves to the executable-plan representation."""
 
     kind: str
     strategy_id: str
@@ -61,9 +59,8 @@ def resolve_plan_descriptor(
 ) -> ExecutableEvaluationPlan:
     """resolve a boundary descriptor into the canonical executable plan.
 
-    the returned plan already includes the workload schedule and predicate ledger. validation
-    errors are raised immediately; validation warnings are preserved as metadata.
-    """
+    the returned plan includes the workload schedule and predicate ledger. validation errors
+    are raised; validation warnings are kept as metadata."""
 
     if descriptor.query_spec and query_spec and descriptor.query_spec != query_spec:
         raise ValueError(

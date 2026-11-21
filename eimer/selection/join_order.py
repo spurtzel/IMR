@@ -1,8 +1,7 @@
-"""join-order ranking for compose plans: a connected left-deep DP and a subset-DP bushy tree.
+"""Join-order ranking for compose plans: a connected left-deep DP and a subset-DP bushy tree.
 
-ranks orders with a lightweight mirror of the estimator's per-step arithmetic; the chosen order is
-always re-scored by the full estimator, so a ranking miss costs optimality, never correctness.
-deterministic tie-breaks keep plan ids stable. also holds the row-based storage-budget helpers.
+Orders are ranked with a lightweight version of the estimator's per-step arithmetic. Ties are
+broken deterministically. Also holds the row-based storage-budget helpers.
 """
 from __future__ import annotations
 
@@ -14,13 +13,11 @@ from eimer.models import CompositionPlan, View, make_view, view_sort_key
 from eimer.plans.composition import CompositionJoinGraph
 from eimer.workload import ConstantSelectivity, WindowSelectivity, Workload
 
-# equi-join rows cost ~ij_rate/fp_rate of fp rows; selection-inert, affecting only absolute
-# compose scores. the clique-grow selector ranks with ij_over_fp=1.0.
 _IJ_OVER_FP = 1.06
 
 
 def _sigma_value(components, workload: Workload, batch_index: int) -> float:
-    """product selectivity of a component list (constant factors and window factors combined)."""
+    """Product selectivity of a component list (constant factors and window factors combined)."""
     out = 1.0
     for comp in components:
         if isinstance(comp, ConstantSelectivity):
@@ -28,14 +25,15 @@ def _sigma_value(components, workload: Workload, batch_index: int) -> float:
         elif isinstance(comp, WindowSelectivity):
             base = workload.n_at(batch_index)
             out *= max(0.0, min(1.0, (2.0 * comp.w * workload.rho) / base)) if base > 0 else 1.0
-        else:  # pragma: no cover - new component kinds must be added deliberately
+        else:  # pragma: no cover
             raise TypeError(f"unknown selectivity component {type(comp)!r}")
     return out
 
 
 def _edge_sigma(workload: Workload, batch_index: int, a: str, b: str, *, windows: bool = True) -> float:
-    """selectivity of the value edge between variables a and b; 1.0 if the pair carries no edge.
-    ,,windows=False'' skips the edge's window components (constants only)."""
+    """Selectivity of the value edge between variables a and b; 1.0 if the pair carries no edge.
+        `windows=False` skips the edge's window components (constants only).
+    """
     positions = workload.dependency_graph.positions
     key = (a, b) if positions[a] < positions[b] else (b, a)
     components = workload.selectivities.dependent.get(key)
@@ -50,8 +48,9 @@ WINDOW_RULES = ("pairwise", "chain")
 
 
 def analytic_node_size(view: View, workload: Workload, batch_index: int) -> float:
-    """analytic view cardinality: product of sigma-filtered singletons x internal edge sigmas x the
-    1/k! pattern-ordering factor."""
+    """Analytic view cardinality: product of sigma-filtered singletons x internal edge sigmas x the
+        1/k! pattern-ordering factor.
+    """
     rule = getattr(workload, "window_rule", "pairwise")
     if rule not in WINDOW_RULES:
         raise ValueError(f"unknown window_rule {rule!r}; expected one of {WINDOW_RULES}")
@@ -68,14 +67,10 @@ def analytic_node_size(view: View, workload: Workload, batch_index: int) -> floa
     return max(size, 0.0)
 
 
-# --- storage budget M (rows) -------------------------------------------------------------------------------
-# resident state for the budget is exactly the maintained-view set. analytic_node_size is the un-pruned
-# per-view cardinality, so it upper-bounds the true resident size at every batch k. constant-selectivity
-# edges are monotone in k (worst case at k=K), but windowed edges can be non-monotone, so we take the
-# explicit max over k in 0..K: a correct upper bound regardless of monotonicity.
 def resident_rows(views, workload: Workload, batch_index: int) -> float:
     """Summed un-pruned analytic resident rows of a maintained-view set at one batch index.
-    ,,views'' is any iterable of View / frozenset[str] (make_view is idempotent on a frozenset)."""
+        `views` is any iterable of View / frozenset[str].
+    """
     return sum(analytic_node_size(make_view(v), workload, batch_index) for v in views)
 
 
@@ -86,7 +81,7 @@ def max_resident_rows(views, workload: Workload) -> float:
 
 
 def within_storage_budget(views, workload: Workload, max_storage_rows) -> bool:
-    """true iff the maintained views fit the row budget. none budget = infinity = always feasible."""
+    """True iff the maintained views fit the row budget. A None budget is always feasible."""
     if max_storage_rows is None:
         return True
     return max_resident_rows(views, workload) <= float(max_storage_rows)
@@ -94,7 +89,7 @@ def within_storage_budget(views, workload: Workload, max_storage_rows) -> bool:
 
 @dataclass(frozen=True)
 class OrderedJoin:
-    """One DP transition: join ,,node'' to the current state via ,,edge'' (a join-graph edge key)."""
+    """One DP transition: join `node` to the current state via `edge` (a join-graph edge key)."""
     node: View
     edge: Tuple[View, View]
 
@@ -107,14 +102,14 @@ def _step(
     workload: Workload,
     batch_index: int,
 ) -> Tuple[float, float]:
-    """(stream_cost, output_card) of joining ,,node'' onto a state. cross/band steps stream
-    state_card x node_card; shared-variable steps are equi joins charged max(in, out) x ij/fp. output
-    applies the new cross edges' sigmas, the interleave ordering factor, and the shared-key collapse."""
+    """(stream_cost, output_card) of joining `node` onto a state. Cross/band steps stream
+        state_card x node_card; shared-variable steps are equi joins charged max(in, out) x ij/fp. The output
+        applies the new cross edges' sigmas, the interleave ordering factor, and the shared-key collapse.
+    """
     shared = state_vars & set(node)
     new_vars = set(node) - state_vars
     output = state_card * node_card
     for a in shared:
-        # repeat-key collapse: the equi key pins the shared singleton copy
         h = float(workload.n_at(batch_index))
         singleton = max(h * workload.selectivities.independent.get(a, 1.0), 1.0)
         output /= singleton
@@ -123,7 +118,7 @@ def _step(
             output *= _edge_sigma(workload, batch_index, a, b)
     s, w = len(state_vars), len(new_vars)
     if w:
-        output *= factorial(s) * factorial(w) / factorial(s + w)  # interleave ordering factor
+        output *= factorial(s) * factorial(w) / factorial(s + w)
     if shared:
         cost = max(state_card, output) * _IJ_OVER_FP
     else:
@@ -132,9 +127,9 @@ def _step(
 
 
 def _reach_edge_key(edge_key: Tuple[View, View], positions: Dict[str, int]):
-    """deterministic preference among the edges that reach the same neighbor from a state: a
-    shared-variable (non-cross) edge beats a cross edge, then canonical view order. keeps the DP's edge
-    attribution hashseed-independent without changing any join cost (the edge never enters ,,_step'')."""
+    """Preference among the edges that reach the same neighbor from a state: a
+        shared-variable (non-cross) edge beats a cross edge, then canonical view order.
+    """
     left, right = edge_key
     shares = bool(set(left) & set(right))
     return (0 if shares else 1, view_sort_key(left, positions), view_sort_key(right, positions))
@@ -157,7 +152,6 @@ def best_connected_left_deep_order(
         adjacency[right].append((left, edge_key))
     sizes = {n: analytic_node_size(n, workload, batch_index) for n in nodes}
 
-    # state -> (cost, card, vars, path); seeded with every node as root
     best: Dict[FrozenSet[View], Tuple[float, float, FrozenSet[str], Tuple[OrderedJoin, ...]]] = {}
     for n in nodes:
         best[frozenset({n})] = (0.0, sizes[n], frozenset(n), ())
@@ -173,7 +167,7 @@ def best_connected_left_deep_order(
                         continue
                     prev = reachable.get(neighbor)
                     if prev is None or _reach_edge_key(edge_key, positions) < _reach_edge_key(prev, positions):
-                        reachable[neighbor] = edge_key  # deterministic shared-edge tie-break
+                        reachable[neighbor] = edge_key
             for neighbor in sorted(reachable, key=lambda v: view_sort_key(v, positions)):
                 step_cost, out_card = _step(svars, card, neighbor, sizes[neighbor], workload, batch_index)
                 key = state | {neighbor}
@@ -198,8 +192,9 @@ def construct_dp_composition_plan(
     workload: Workload,
     batch_index: int,
 ) -> CompositionPlan:
-    """build a CompositionPlan whose join_order follows the DP-chosen connected left-deep sequence
-    (edges sorted, types and deferred conditions taken from the join graph)."""
+    """Builds a CompositionPlan whose join_order follows the DP-chosen connected left-deep sequence
+        (edges sorted, types and deferred conditions taken from the join graph).
+    """
     positions = workload.dependency_graph.positions
     path = best_connected_left_deep_order(join_graph, workload, batch_index)
     tree_edges = [oj.edge for oj in path]
@@ -248,9 +243,7 @@ def _merge_view(views: FrozenSet[View]) -> View:
 
 
 def _subset_card(subset: FrozenSet[View], workload: Workload, batch_index: int) -> float:
-    """selinger per-subset cardinality: ,,analytic_node_size'' over the merged variable set of S's views.
-    with no order-exploiting operator the joined cardinality is order-independent, so it is computed once
-    per subset, which is what Bellman's state-sufficiency needs for overlapping covers."""
+    """Selinger per-subset cardinality: `analytic_node_size` over the merged variable set of S's views."""
     return analytic_node_size(_merge_view(subset), workload, batch_index)
 
 
@@ -262,9 +255,10 @@ def _split_cost(
     output: float,
     ij_over_fp: float = _IJ_OVER_FP,
 ) -> float:
-    """orientation-aware split cost of joining the two halves {L, R}, min over both operand orientations.
-    shared variable: equi join charged ,,max(streaming-side card, output) * _IJ_OVER_FP'', streaming the
-    smaller operand. disjoint: cross/band charged ,,card_L * card_R'', symmetric across orientations."""
+    """Orientation-aware split cost of joining the two halves {L, R}, min over both operand orientations.
+        Shared variable: equi join charged `max(streaming-side card, output) * _IJ_OVER_FP`, streaming the
+        smaller operand. Disjoint: cross/band charged `card_L * card_R`.
+    """
     if vars_left & vars_right:
         return min(max(card_left, output), max(card_right, output)) * ij_over_fp
     return card_left * card_right
@@ -277,10 +271,10 @@ def best_bushy_tree(
     *,
     ij_over_fp: float = _IJ_OVER_FP,
 ) -> Tuple[BushyTree, float]:
-    """exact subset-DP over compose join trees (DPsub with cross products).
-    O(3^n) subsets x splits. per-subset cardinality via ,,_subset_card'' (plan-independent), each
-    split's cost via ,,_split_cost''; subsets ascend by size, tie-break is (cost, canonical partition
-    key)."""
+    """Exact subset-DP over compose join trees (DPsub with cross products), O(3^n) subsets x splits.
+        Per-subset cardinality via `_subset_card`, each split's cost via `_split_cost`;
+        subsets ascend by size, ties are broken by (cost, canonical partition key).
+    """
     from itertools import combinations
     positions = workload.dependency_graph.positions
     nodes: List[View] = sorted(join_graph.nodes, key=lambda v: view_sort_key(v, positions))
@@ -290,7 +284,6 @@ def best_bushy_tree(
     def part_key(left: FrozenSet[View]) -> Tuple[Tuple[int, ...], ...]:
         return tuple(sorted(view_sort_key(v, positions) for v in left))
 
-    # best[S] = (cost, tree); card(S) comes from _subset_card, not from chaining steps.
     best: Dict[FrozenSet[View], Tuple[float, BushyTree]] = {
         frozenset({n}): (0.0, BushyTree(node=n)) for n in nodes
     }
@@ -306,7 +299,6 @@ def best_bushy_tree(
             best_cost: float | None = None
             best_tree: BushyTree | None = None
             best_pkey: Tuple[Tuple[int, ...], ...] | None = None
-            # iterate each unordered partition {L, R} once: L always contains members[0].
             anchor = members[0]
             for l_size in range(1, size):
                 for left_combo in combinations(members[1:], l_size - 1):
@@ -336,16 +328,14 @@ def best_bushy_tree(
 
 
 def enumerate_all_trees(nodes: List[View]):
-    """brute-force reference: yield every binary tree shape over the leaf views. orientation is not
-    enumerated because the split cost already mins over both operand orientations, so shapes alone are
-    exhaustive over costs. checks ,,best_bushy_tree'' on small instances (n <= 6)."""
+    """Brute-force reference: yields every binary tree shape over the leaf views (operand orientation
+    is covered by the min in `_split_cost`); checks `best_bushy_tree` on small instances (n <= 6)."""
     if len(nodes) == 1:
         yield BushyTree(node=nodes[0])
         return
     from itertools import combinations
     anchor = nodes[0]
     rest = nodes[1:]
-    # every unordered bipartition of the leaves with ,,anchor'' pinned to the left half
     for l_extra in range(0, len(rest)):
         for left_combo in combinations(rest, l_extra):
             left_set = set(left_combo) | {anchor}
@@ -357,9 +347,9 @@ def enumerate_all_trees(nodes: List[View]):
 
 
 def tree_rank_cost(tree: BushyTree, workload: Workload, batch_index: int) -> float:
-    """brute-force reference: cost one tree with the DP semantics (,,_subset_card'' per merged
-    variable-set, ,,_split_cost'' per internal node) without calling ,,best_bushy_tree''. the recursion
-    mirrors the DP, so the two agree by construction."""
+    """Brute-force reference: costs one tree with the DP semantics (`_subset_card` per merged
+        variable-set, `_split_cost` per internal node) without calling `best_bushy_tree`.
+    """
     if tree.node is not None:
         return 0.0
     left_cost = tree_rank_cost(tree.left, workload, batch_index)
@@ -372,8 +362,9 @@ def tree_rank_cost(tree: BushyTree, workload: Workload, batch_index: int) -> flo
 
 
 def to_join_tree_node(tree: BushyTree):
-    """convert the DP's BushyTree into the models.JoinTreeNode carried on
-    CompositionPlan.join_tree (same leaf/inner shape)."""
+    """Converts the DP's BushyTree into the models.JoinTreeNode carried on
+        CompositionPlan.join_tree (same leaf/inner shape).
+    """
     from eimer.models import JoinTreeNode
     if tree.node is not None:
         return JoinTreeNode(node=tree.node)

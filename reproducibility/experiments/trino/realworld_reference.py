@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """Reference results of the two Kleene queries of the real-world experiment, computed directly from the table in
-Python, without SQL. Native MATCH_RECOGNIZE does not finish on these queries at the paper's table size, so this is
-the comparison that covers the full table. The derivation follows the preferment order of MATCH_RECOGNIZE with
-ONE ROW PER MATCH and AFTER MATCH SKIP TO NEXT ROW; rows are taken in id order (= ORDER BY time).
+Python, without SQL. The derivation follows the preferment order of MATCH_RECOGNIZE with ONE ROW PER MATCH and
+AFTER MATCH SKIP TO NEXT ROW; rows are taken in id order (= ORDER BY time).
 
 taxi Q2       PATTERN (B+ Z* C), no condition between variables, B and C are disjoint row classes.
               A match starts at every B row i. B+ is greedy: the maximal run i..e(i) of B rows. Z* is greedy: C is the
-              last C row of the table, L. L is not a B row, so it lies after the run or before i: there is a match iff
-              i < L.          Tuple (b_count, b_first_id, b_last_id, c_id) = (e(i) - i + 1, i, e(i), L).
+              last C row of the table, L. There is a match iff i < L.
+              Tuple (b_count, b_first_id, b_last_id, c_id) = (e(i) - i + 1, i, e(i), L).
 ecommerce Q4  PATTERN (A Z*? B+ Z* C), C depends on A only (same user and product, at most 30 minutes later); A, B and
               C are disjoint row classes. For an A row i: Z*? is reluctant, so B+ starts at the first B row j after i
               for which the rest matches; B+ is greedy (the maximal run j..e(j)); Z* is greedy, so C is the last row
-              c(i) that satisfies C's conditions against i. c(i) is not a B row, so with j0 the first B row after i
-              the rest matches iff j0 < c(i), and no later start matches if j0 does not.
+              c(i) that satisfies C's conditions against i. With j0 the first B row after i, the rest matches iff
+              j0 < c(i).
               Tuple (a_id, b_count, b_first_id, b_last_id, c_id) = (i, e(j0) - j0 + 1, j0, e(j0), c(i)).
 """
 from __future__ import annotations
@@ -51,7 +50,7 @@ def ecommerce_q4(df: pd.DataFrame) -> set:
     is_a, is_b, is_c = et == "cart", et == "view", et == "purchase"
     user, prod = df["user_id"].tolist(), df["product_id"].tolist()
     e = _run_end(is_b)
-    nxt_b = np.full(len(df) + 1, -1, dtype=np.int64)   # the first B row at position >= i
+    nxt_b = np.full(len(df) + 1, -1, dtype=np.int64)
     for i in range(len(df) - 1, -1, -1):
         nxt_b[i] = i if is_b[i] else nxt_b[i + 1]
     by_key: dict = {}

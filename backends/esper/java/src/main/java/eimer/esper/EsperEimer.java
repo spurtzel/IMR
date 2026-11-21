@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+/** Command-line driver: runs one arm (eimer, native or none) of a plan on the Esper runtime and writes a record. */
 public final class EsperEimer {
     private static String esperVersion() {
         try (java.io.InputStream in = EsperEimer.class.getResourceAsStream("/META-INF/maven/com.espertech/esper-runtime/pom.properties")) {
@@ -37,14 +38,12 @@ public final class EsperEimer {
                 }
             }
         } catch (IOException ignored) {
-            // fall through
         }
         String v = com.espertech.esper.runtime.client.EPRuntimeProvider.class.getPackage().getImplementationVersion();
         return v != null ? v : "unknown";
     }
 
-    /** the wall in flight: Esper cannot be interrupted, so on a deadline the partial record is written with
-     *  status dnf and the JVM halts (the driver reads the record). Armed around every timed region. */
+    /** Aborts a timed region that exceeds the wall. */
     private static final class Watchdog {
         private final RunRecord record;
         private final Path out;
@@ -67,7 +66,6 @@ public final class EsperEimer {
                         try {
                             writeRecord(out, record);
                         } catch (IOException ignored) {
-                            // nothing better to do
                         }
                         System.err.println("watchdog: wall exceeded, halting");
                         Runtime.getRuntime().halt(3);
@@ -112,8 +110,6 @@ public final class EsperEimer {
             record = switch (cli.arm) {
                 case "eimer" -> runEimer(data, plan, cli);
                 case "native" -> runNative(data, plan, cli);
-                // "none": the data set is loaded exactly as above and nothing runs;
-                // measured like the arms, it is the JVM + data baseline subtracted from every arm's working memory
                 case "none" -> runNone(data);
                 default -> throw new IllegalArgumentException("unknown arm: " + cli.arm);
             };
@@ -121,7 +117,7 @@ public final class EsperEimer {
             record = RunRecord.failed(cli.arm, t);
         }
 
-        if (cli.finalGc) {   // memory measurement: the live set at the end of the run, after the timed section
+        if (cli.finalGc) {
             System.gc(); System.gc();
             Runtime rt = Runtime.getRuntime();
             record.finalLiveHeapMb = (rt.totalMemory() - rt.freeMemory()) / (1024.0 * 1024.0);
@@ -136,8 +132,6 @@ public final class EsperEimer {
                 record.arm, record.status, ms(record.totalNanos), record.finalTuples.size(), cli.out);
     }
 
-    /** --gc-samples S (memory measurement): at ~S evenly spaced batch boundaries and after the last batch, two
-     *  forced full collections and the live heap, outside the timed section; the record keeps the peak. */
     private static void sampleLiveHeap(RunRecord record, Cli cli, int bi, int nBatches, LinkedHashMap<String, Object> perBatch) {
         if (cli.gcSamples <= 0) {
             return;
@@ -156,7 +150,6 @@ public final class EsperEimer {
     private static RunRecord runNone(DataSet data) {
         RunRecord record = new RunRecord("none");
         record.totalNanos = 0L;
-        // the data set must be reachable during the forced collections: measured here, the rows are touched afterwards
         System.gc(); System.gc();
         Runtime rt = Runtime.getRuntime();
         record.peakLiveHeapSampledMb = (rt.totalMemory() - rt.freeMemory()) / (1024.0 * 1024.0);
@@ -239,7 +232,7 @@ public final class EsperEimer {
                 perBatch.put("resident_rows", residentRows);
                 perBatch.put("heap_used_mb", heapUsedMb());
                 record.perBatch.add(perBatch);
-                sampleLiveHeap(record, cli, bi, data.batches.size(), perBatch);   // memory measurement only (--gc-samples), after the timed section
+                sampleLiveHeap(record, cli, bi, data.batches.size(), perBatch);
 
                 System.err.printf(Locale.ROOT, "batch=%d timed_ms=%.3f count=%d%n",
                         batch.b, ms(batchNanos), selected.size());
@@ -307,7 +300,7 @@ public final class EsperEimer {
                 perBatch.put("count", selected.size());
                 perBatch.put("heap_used_mb", heapUsedMb());
                 record.perBatch.add(perBatch);
-                sampleLiveHeap(record, cli, record.perBatch.size() - 1, data.batches.size(), perBatch);   // memory measurement only (--gc-samples)
+                sampleLiveHeap(record, cli, record.perBatch.size() - 1, data.batches.size(), perBatch);
 
                 System.err.printf(Locale.ROOT, "batch=%d timed_ms=%.3f count=%d%n",
                         batch.b, ms(batchNanos), selected.size());
@@ -490,8 +483,8 @@ public final class EsperEimer {
         final Path out;
         final long wallNanos;
         final long totalWallNanos;
-        boolean finalGc;   // --final-gc 1: forced collections + live heap after the timed section (memory measurement)
-        int gcSamples;     // --gc-samples S: forced collections at ~S batch boundaries (memory measurement)
+        boolean finalGc;
+        int gcSamples;
 
         private Cli(Path data, Path plan, String arm, Path out, long wallNanos, long totalWallNanos) {
             this.data = data;
@@ -536,7 +529,6 @@ public final class EsperEimer {
         }
     }
 
-    /** Heap in use after a batch (untimed): total minus free, no GC forced, so an upper bound on live data. */
     private static double heapUsedMb() {
         Runtime rt = Runtime.getRuntime();
         return (rt.totalMemory() - rt.freeMemory()) / (1024.0 * 1024.0);
@@ -550,8 +542,8 @@ public final class EsperEimer {
         List<long[]> finalTuples = new ArrayList<>();
         final StringBuilder notes = new StringBuilder();
         String dataSha16;
-        Double finalLiveHeapMb;   // set only with --final-gc 1 (memory measurement)
-        double peakLiveHeapSampledMb = 0.0;   // --gc-samples: peak live heap over the forced collections at batch boundaries
+        Double finalLiveHeapMb;
+        double peakLiveHeapSampledMb = 0.0;
 
         RunRecord(String arm) {
             this.arm = arm;

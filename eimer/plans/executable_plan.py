@@ -1,6 +1,6 @@
 """executable evaluation-plan bundle.
 
-packages the lowered ,,EvaluationPlan'', the workload schedule wrapper, and the scoped
+packages the lowered `EvaluationPlan`, the workload schedule wrapper, and the scoped
 predicate ledger into one inspectable object.
 """
 

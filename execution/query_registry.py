@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-"""Benchmark query registry backed by generic QuerySpec objects.
-
-Registers one query, ``canonical_r_b_m``. Add further queries as QuerySpec
-instances, not as separate hardcoded benchmark paths.
-"""
+"""Benchmark query registry of QuerySpec objects."""
 
 import bootstrap  # noqa: F401
 

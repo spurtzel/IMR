@@ -1,13 +1,12 @@
-"""temporal-constraint propagation: derive implied pairwise windows from the explicit ones.
+"""Temporal-constraint propagation: derives implied pairwise windows from the explicit ones.
 
-an explicit window between u and v (pos(u) < pos(v)) bounds ts_v - ts_u. combined with the pattern's
+An explicit window between u and v (pos(u) < pos(v)) bounds ts_v - ts_u. Combined with the pattern's
 total order these bounds propagate: the tightest implied bound is the shortest path in the
-difference-constraint graph, computed by floyd-warshall over the n <= 8 variables. every pair the
+difference-constraint graph, computed by Floyd-Warshall over the n <= 8 variables. Every pair the
 bound reaches receives it: a pair without a dependent edge gets a derived window edge, a pair whose edge
 states no window (a band, an equality) or only a looser one gets the implied window appended to that
-edge, so no maintained view is left unbounded in time. derived predicates participate like declared
-ones downstream (view updates, compose, the estimator's window sigma). identity for window-less
-queries; kill-switch EIMER_DISABLE_WINDOW_PROPAGATION=1.
+edge. Derived predicates are used like declared ones downstream (view updates, compose, the estimator's
+window sigma). Window-less queries are unchanged; `EIMER_DISABLE_WINDOW_PROPAGATION=1` switches it off.
 """
 from __future__ import annotations
 
@@ -21,14 +20,12 @@ from eimer.workload import Selectivities, WindowSelectivity
 
 _UNIT_MS = {"MILLISECOND": 1.0, "SECOND": 1000.0, "MINUTE": 60000.0, "HOUR": 3600000.0, "DAY": 86400000.0, "WEEK": 604800000.0}
 
-# a symmetric window predicate: abs(date_diff('unit', X.ts, Y.ts)) <= K bounds |ts_Y - ts_X|
 _ABS_DATE_DIFF_RE = re.compile(
     r"abs\s*\(\s*date_diff\s*\(\s*'(?P<unit>\w+)'\s*,\s*(?P<v1>\w+)\.ts\s*,\s*(?P<v2>\w+)\.ts\s*\)\s*\)"
     r"\s*<=\s*(?P<bound>\d+(?:\.\d+)?)",
     re.IGNORECASE,
 )
 
-# a one-sided interval window predicate: X.ts <= Y.ts + INTERVAL 'k' UNIT bounds ts_X - ts_Y <= k
 _INTERVAL_RE = re.compile(
     r"(?P<vl>\w+)\.ts\s*<=\s*(?P<vr>\w+)\.ts\s*\+\s*INTERVAL\s*'(?P<bound>\d+(?:\.\d+)?)'\s*(?P<unit>\w+)",
     re.IGNORECASE,
@@ -36,21 +33,18 @@ _INTERVAL_RE = re.compile(
 
 
 def propagation_enabled() -> bool:
-    """on by default (identity for window-less queries); kill-switch EIMER_DISABLE_WINDOW_PROPAGATION=1."""
+    """On by default; `EIMER_DISABLE_WINDOW_PROPAGATION=1` switches it off."""
     return os.environ.get("EIMER_DISABLE_WINDOW_PROPAGATION", "").lower() not in ("1", "true", "yes")
 
 
 def propagate_default(dep_graph: DependencyGraph) -> DependencyGraph:
-    """entry point: augment unless the kill-switch is set. idempotent: a derived predicate re-parses to
-    the bound it was derived from, so a second pass finds nothing tighter to add."""
+    """Entry point: augments unless `EIMER_DISABLE_WINDOW_PROPAGATION` is set. Idempotent."""
     if not propagation_enabled():
         return dep_graph
     augmented, _ = augment_dependency_graph(dep_graph)
     return augmented
 
 
-# Y.c BETWEEN X.c AND X.c + INTERVAL 'k' UNIT  -- the range form: 0 <= c_Y - c_X <= k; any timestamp column, the same
-# on all three sides. Y.c - X.c <= INTERVAL 'k' UNIT  -- the subtraction form, same bound.
 _BETWEEN_RE = re.compile(
     r"(?P<vy>\w+)\.(?P<col>\w+)\s+BETWEEN\s+(?P<vx>\w+)\.(?P=col)\s+AND\s+(?P=vx)\.(?P=col)\s*\+\s*INTERVAL\s*'(?P<bound>\d+(?:\.\d+)?)'\s*(?P<unit>\w+)",
     re.IGNORECASE,
@@ -61,11 +55,11 @@ _SUBTRACT_RE = re.compile(
 )
 _COLUMN_RES = (_BETWEEN_RE, _SUBTRACT_RE)
 
-DERIVED_WINDOW_OPERATOR = "DERIVED_WINDOW"   # marks a predicate that exists only because of propagation
+DERIVED_WINDOW_OPERATOR = "DERIVED_WINDOW"
 
 
 def window_column(dep_graph: DependencyGraph) -> str:
-    """the timestamp column of the graph's explicit window bounds (first found); ,,ts'' when none names one."""
+    """The timestamp column of the graph's explicit window bounds (first found); `ts` when none names one."""
     for edge in dep_graph.edges:
         for predicate in edge.dependent_predicates:
             for rx in _COLUMN_RES:
@@ -76,12 +70,12 @@ def window_column(dep_graph: DependencyGraph) -> str:
 
 
 def is_derived_window_edge(edge: DependencyEdge) -> bool:
-    """an edge that exists only because of propagation (every predicate derived)."""
+    """An edge that exists only because of propagation (every predicate derived)."""
     return bool(edge.dependent_predicates) and all(pr.operator == DERIVED_WINDOW_OPERATOR for pr in edge.dependent_predicates)
 
 
 def strip_derived_window_edges(dep_graph: DependencyGraph) -> DependencyGraph:
-    """the graph without its derived window edges (derived predicates appended to explicit edges stay)."""
+    """The graph without its derived window edges (derived predicates appended to explicit edges stay)."""
     kept = [e for e in dep_graph.edges if not is_derived_window_edge(e)]
     return dep_graph if len(kept) == len(dep_graph.edges) else replace(dep_graph, edges=kept)
 
@@ -98,12 +92,11 @@ def explicit_selection_inputs(dep_graph: DependencyGraph, workload):
 
 
 def parse_window_bounds_ms(text: str, *, conservative: bool = False) -> List[Tuple[str, str, float]]:
-    """directed bounds [(u, v, W_ms)] meaning ts_v - ts_u <= W_ms, extracted from one predicate text.
+    """Directed bounds [(u, v, W_ms)] meaning ts_v - ts_u <= W_ms, extracted from one predicate text.
 
-    ,,conservative'' widens a date_diff bound by one unit: engines count unit boundaries crossed
-    (DuckDB, and Trino truncates), so ,,date_diff('millisecond', x, y) <= K'' admits differences up to
-    just under K+1 ms; a consumer that must never exclude an admitted pair (the batch-window prefix
-    prune) needs (K+1)·unit. The exact interval form ,,y <= x + INTERVAL'' stays as stated."""
+        `conservative` widens a date_diff bound by one unit: `date_diff('millisecond', x, y) <= K`
+        becomes (K+1)·unit. The interval form `y <= x + INTERVAL` is unchanged.
+    """
     bounds: List[Tuple[str, str, float]] = []
     for m in _ABS_DATE_DIFF_RE.finditer(text):
         unit = _UNIT_MS.get(m.group("unit").upper())
@@ -118,9 +111,8 @@ def parse_window_bounds_ms(text: str, *, conservative: bool = False) -> List[Tup
         if unit is None:
             continue
         w = float(m.group("bound")) * unit
-        # vl.ts <= vr.ts + W  bounds  ts_vl - ts_vr <= W : arc vr -> vl
         bounds.append((m.group("vr"), m.group("vl"), w))
-    for rx in _COLUMN_RES:   # range and subtraction forms: exact bounds, stated on the pair's own column
+    for rx in _COLUMN_RES:
         for m in rx.finditer(text):
             unit = _UNIT_MS.get(m.group("unit").upper().rstrip("S"))
             if unit is None:
@@ -130,11 +122,10 @@ def parse_window_bounds_ms(text: str, *, conservative: bool = False) -> List[Tup
 
 
 def implied_windows(dep_graph: DependencyGraph, *, conservative: bool = False) -> Dict[Tuple[str, str], float]:
-    """tightest implied window (ms) for every position-ordered pair, via shortest paths.
+    """Tightest implied window (ms) for every position-ordered pair, via shortest paths.
 
-    returns only pairs with a finite bound, keyed (x, y) with pos(x) < pos(y). queries without explicit
-    windows return {}; pure orderings propagate nothing (they bound differences by 0 only backwards).
-    ,,conservative'' passes through to parse_window_bounds_ms (one extra unit per date_diff bound).
+        Returns only pairs with a finite bound, keyed (x, y) with pos(x) < pos(y). Queries without explicit
+        windows return {}. `conservative` is passed to `parse_window_bounds_ms`.
     """
     variables = sorted(dep_graph.variables, key=lambda v: dep_graph.positions[v])
     pos = dep_graph.positions
@@ -143,7 +134,7 @@ def implied_windows(dep_graph: DependencyGraph, *, conservative: bool = False) -
     for x in variables:
         for y in variables:
             if pos[x] < pos[y]:
-                d[y][x] = 0.0  # ordering: ts_x - ts_y < 0 <= 0
+                d[y][x] = 0.0
     for edge in dep_graph.edges:
         for predicate in edge.dependent_predicates:
             for u, v, w in parse_window_bounds_ms(predicate.text, conservative=conservative):
@@ -166,7 +157,7 @@ def implied_windows(dep_graph: DependencyGraph, *, conservative: bool = False) -
 
 
 def _render_ms(w_ms: float) -> str:
-    """a bound that re-parses to itself: integral milliseconds as an int, else at most six decimals."""
+    """Renders a bound that re-parses to itself: integral milliseconds as an int, else at most six decimals."""
     if abs(w_ms - round(w_ms)) < 1e-9:
         return str(int(round(w_ms)))
     return f"{w_ms:.6f}".rstrip("0").rstrip(".")
@@ -183,7 +174,7 @@ def _derived_window_predicate(x: str, y: str, w_ms: float, col: str = "ts") -> D
 
 
 def _stated_bound_ms(edge: DependencyEdge, x: str, y: str) -> float:
-    """the tightest bound on ts_y - ts_x the edge's own predicates state (inf when they state none)."""
+    """The tightest bound on ts_y - ts_x the edge's own predicates state (inf when they state none)."""
     best = float("inf")
     for predicate in edge.dependent_predicates:
         for u, v, w in parse_window_bounds_ms(predicate.text):
@@ -192,27 +183,22 @@ def _stated_bound_ms(edge: DependencyEdge, x: str, y: str) -> float:
     return best
 
 
-# a bound must undercut the stated one by more than the rendering precision to count as tighter
 _TIGHTER_BY_MS = 1e-6
 
 
 def augment_dependency_graph(dep_graph: DependencyGraph) -> Tuple[DependencyGraph, Dict[Tuple[str, str], float]]:
-    """attach the implied window to every pair it reaches.
+    """Attaches the implied window to every pair it reaches.
 
-    a pair without a dependent edge gets a derived edge carrying the window; a pair whose edge states no
-    window, or only a looser one, gets the window appended after the edge's own predicates (which stay
-    untouched). returns (augmented graph, {canonical pair key: W_ms}) over every pair that received a
-    window; the map drives sigma injection for pairs a measured payload lacks. the input graph is never
-    mutated; with nothing to add (no explicit windows, or a second pass) it is returned as is.
+        A pair without a dependent edge gets a derived edge carrying the window; a pair whose edge states no
+        window, or only a looser one, gets the window appended after the edge's own predicates.
+        Returns (augmented graph, {canonical pair key: W_ms}) over every pair that received a
+        window. The input graph is not mutated; with nothing to add it is returned as is.
     """
-    col = window_column(dep_graph)   # derived predicates on the explicit bounds' timestamp column
+    col = window_column(dep_graph)
     implied = implied_windows(dep_graph)
     pos = dep_graph.positions
     edges: List[DependencyEdge] = list(dep_graph.edges)
     index_of = {frozenset((e.var_left, e.var_right)): i for i, e in enumerate(edges)}
-    # a Kleene variable gets no derived window: a dependent condition on its view would route the view's update
-    # through the join path, which does not exist for run views. the explicit window keeps bounding the pattern;
-    # only the interior bound on the run variable is not materialized.
     quant = getattr(dep_graph, "quantifiers", None) or {}
     kleene = {v for v in dep_graph.variables if str(quant.get(v, "ONE")).upper() != "ONE"}
     derived_map: Dict[Tuple[str, str], float] = {}
@@ -247,10 +233,10 @@ def inject_derived_window_selectivities(
     selectivities: Selectivities, derived_map: Dict[Tuple[str, str], float], *,
     rho_time_unit_ms: float = 1000.0,
 ) -> Selectivities:
-    """add WindowSelectivity entries for derived pairs missing from the measured payload.
+    """Adds WindowSelectivity entries for derived pairs missing from the measured payload.
 
-    WindowSelectivity.w must be in the workload's rho time unit (the benchmark convention: rho = events
-    per second), so w = W_ms / rho_time_unit_ms. existing keys are never overwritten.
+        WindowSelectivity.w is in the workload's rho time unit (rho = events
+        per second), so w = W_ms / rho_time_unit_ms. Existing keys are not overwritten.
     """
     dependent = dict(selectivities.dependent)
     for key, w_ms in derived_map.items():

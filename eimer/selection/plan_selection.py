@@ -1,5 +1,5 @@
 """composition-variant expansion for a materialized strategy: the canonical variants, plus the
-bounded left-deep join-order expansion used when a plan descriptor is resolved."""
+bounded left-deep join-order expansion."""
 
 from __future__ import annotations
 

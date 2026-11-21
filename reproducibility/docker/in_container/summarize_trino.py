@@ -4,12 +4,11 @@
 Prints one row per workload, writes <out dir>/summary.md and <out dir>/summary.json, and exits with 0 only if every
 check passes:
   correctness    the approaches of a workload return the same result, compared on full tuples
-  configuration  Trino 479, Iceberg or in-memory tables, single-threaded, join reordering off, no warm-up of the
-                 approaches, native MR with the
+  configuration  Trino 479, Iceberg or in-memory tables, single-threaded, join reordering off, native MR with the
                  window on the gap variable, EIMER's composition emitted over the plan's join tree
   paper          the executed strategy is the paper's pick, the selection of this run arrives at the same pick, and
                  the number of matches is the paper's (reproducibility/reference/paper_trino.json)
-Runtimes depend on the machine; fig8 shows the paper's Trino values next to the measured ones for orientation.
+fig8 shows the paper's Trino values next to the measured ones.
 """
 from __future__ import annotations
 
@@ -18,7 +17,7 @@ import os
 import sys
 from pathlib import Path
 
-REPRO = Path(__file__).resolve().parents[2]   # the reproducibility directory
+REPRO = Path(__file__).resolve().parents[2]
 REF = json.loads((REPRO / "reference" / "paper_trino.json").read_text())
 
 
@@ -65,14 +64,13 @@ def ratio(a, b) -> str:
 def common_checks(ck: Checks, r: dict, arms: tuple):
     c = r["cell"]
     ck.ok((r.get("eimer") or {}).get("status") == "ok", f"{c}: EIMER did not finish ({(r.get('eimer') or {}).get('status')})")
-    arms = tuple(a for a in arms if a in r)   # a run may execute a subset of the approaches (ARMS)
+    arms = tuple(a for a in arms if a in r)
     for a in arms:
         ck.ok((r.get(a) or {}).get("status") in ("ok", "dnf"), f"{c}: {a} ended with {(r.get(a) or {}).get('status')}: {(r.get(a) or {}).get('notes', '')[:120]}")
     g = r.get("gates", {})
     ck.ok(g.get("results_identical") is not False, f"{c}: results differ between the approaches")
     ck.ok(g.get("n_compared", 0) >= 1 or all((r.get(a) or {}).get("status") != "ok" for a in arms if a != "eimer"),
           f"{c}: no result comparison although a baseline finished")
-    # configuration
     ck.ok(r.get("engine") == "Trino 479", f"{c}: engine {r.get('engine')} (paper: Trino 479)")
     ck.ok(r.get("catalog") in ("iceberg", "memory"), f"{c}: catalog {r.get('catalog')} (paper: Iceberg tables)")
     ck.ok(r.get("session") == {"join_reordering_strategy": "NONE", "task_concurrency": 1}, f"{c}: session {r.get('session')}")
@@ -82,7 +80,6 @@ def common_checks(ck: Checks, r: dict, arms: tuple):
     ck.ok(r.get("protocol", {}).get("warmup") is False, f"{c}: warm-up runs")
     ck.ok(r.get("eimer_sql", {}).get("compose_nested") is True or len(r.get("pick", [])) < 2, f"{c}: composition not emitted over the join tree")
     ck.ok(r.get("selection", {}).get("kappa") == 150.0, f"{c}: kappa {r.get('selection', {}).get('kappa')} (paper: 150)")
-    # paper
     sel = r.get("selection", {})
     if "this_run_selects_paper_pick" in sel and sel.get("selector_reproduces_paper_pick", True):
         ck.ok(sel["this_run_selects_paper_pick"] is True, f"{c}: this run's selection {sel.get('pick_this_run')} differs from the paper's pick {sel.get('pick')}")
@@ -162,7 +159,7 @@ def mb(arm) -> str:
 
 
 def pm(arm) -> str:
-    """an arm's peak query memory in MB (the largest peak memory Trino reported for one of its statements)."""
+    """an approach's peak query memory in MB."""
     v = (arm or {}).get("peak_query_memory_bytes")
     return "-" if v is None else f"{v / 1e6:.1f}"
 
@@ -259,7 +256,7 @@ def kleene(out: Path):
 
 
 def lower_bound(arm) -> str:
-    """an arm's runtime in seconds; a lower bound (the time spent) where it hit a limit."""
+    """an approach's runtime in seconds."""
     if not arm:
         return "-"
     if arm.get("status") == "ok":
@@ -338,9 +335,8 @@ def realworld(out: Path):
         for a in arms:
             ck.ok((r.get(a) or {}).get("status") in ("ok", "dnf"), f"{c}: {a} ended with {(r.get(a) or {}).get('status')}: {(r.get(a) or {}).get('notes', '')[:120]}")
         e = r.get("eimer") or {}
-        if e.get("status") != "ok":   # EIMER at its limit: a lower bound, as for native MR; nothing to compare on the full table
+        if e.get("status") != "ok":
             ck.ok(e.get("status") == "dnf" and (e.get("spent_ms") or 0) >= r["limits"]["total_s"] * 1000.0, f"{c}: EIMER ended with {e.get('status')} before its limit")
-        # the window: native MR must finish there, and all approaches must agree on full tuples
         ck.ok(w.get("mr_status") == "ok" and w.get("eimer_status") == "ok", f"{c}: window: MR {w.get('mr_status')}, EIMER {w.get('eimer_status')} (no comparison)")
         ck.ok(w.get("mr_eq_eimer") is True, f"{c}: window: native MR and EIMER differ ({w.get('n_mr')} vs. {w.get('n_eimer')} matches)")
         ck.ok((w.get("n_eimer") or 0) >= 1, f"{c}: window: no match to compare")
@@ -353,7 +349,6 @@ def realworld(out: Path):
         ck.ok(g.get("mr_eq_eimer") is not False, f"{c}: native MR and EIMER differ on the full table")
         ck.ok(g.get("results_identical") is True, f"{c}: results differ ({g})")
         ck.ok(g.get("matches_as_in_paper") is not False, f"{c}: {e.get('final_count')} matches (paper: {r.get('paper_matches')})")
-        # configuration and the paper's strategy
         ck.ok(r.get("pick") == REF["realworld"][f"{r['dataset']}_{r['query']}"]["pick"], f"{c}: not the paper's pick")
         ck.ok(r["selection"].get("kappa") == 150.0, f"{c}: kappa {r['selection'].get('kappa')} (paper: 150)")
         if REF["realworld"][f"{r['dataset']}_{r['query']}"].get("selector_reproduces_pick", True):
@@ -439,7 +434,7 @@ def main() -> int:
     title, head, rows, notes, ck, recs = {"fig8": fig8, "fig9": fig9, "fig10": fig10, "kleene": kleene, "budget_shift": budget_shift, "topology_memory": topology_memory,
                                          "realworld": realworld}[which](out)
     have = {r["cell"] for r in recs}
-    for c in os.environ.get("EIMER_REPRO_EXPECTED", "").split():   # the workloads of this run (set by reproduce_trino.sh)
+    for c in os.environ.get("EIMER_REPRO_EXPECTED", "").split():
         ck.ok(c in have, f"{c}: no record (the workload failed, see logs/{which}.{c}.log)")
     sep = "|" + "---|" * (head.count("|") - 1)
     verdict = "ALL CHECKS PASSED" if not ck.failed else f"{len(ck.failed)} CHECK(S) FAILED"
@@ -447,8 +442,8 @@ def main() -> int:
         title += " [in-memory tables]"
         notes += (" This run used Trino's in-memory tables instead of the paper's Iceberg tables: no statement pays a storage commit, tables are "
                   "emptied with TRUNCATE (the connector has no DELETE), dynamic filtering is off, and state sizes are given in rows.")
-    notes += (" peak query memory: the largest peak memory Trino reported for one statement of the approach (its transient query memory; '-' in "
-              "records made before this was recorded).")
+    notes += (" peak query memory: the largest peak memory Trino reported for one statement of the approach (its transient query memory; '-' where Trino "
+              "reported none).")
     lines = [title, "", head, sep, *rows, "", f"Checks: {ck.passed} passed, {len(ck.failed)} failed. **{verdict}**", ""]
     lines += [f"- FAILED: {f}" for f in ck.failed] + ([""] if ck.failed else []) + [notes, ""]
     text = "\n".join(lines)

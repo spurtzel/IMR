@@ -1,10 +1,7 @@
 """explicit-cover strategy bundle for the config-runner sweep.
 
-the sweep selects a plan with clique_grow or edge_cover and passes the chosen cover (its
-view names) to the executor. this module turns that cover into the single ,,SEL'' strategy
-the SQL renderer expects, via plan_build.build_plan (bushy update trees, bushy-priced
-compose), bypassing the enumerated strategy catalog so it is robust at every pattern length.
-"""
+turns a chosen cover (its view names) into the single `SEL` strategy the SQL renderer
+expects, via plan_build.build_plan (bushy update trees, bushy-priced compose)."""
 from __future__ import annotations
 
 from typing import Iterable
@@ -20,7 +17,6 @@ from eimer.selection.plan_selection_clique_grow import select_clique_grow_plan
 from eimer.selection.plan_selection_edge_cover import select_edge_cover_plan
 
 SELECTORS = {"clique_grow": select_clique_grow_plan, "edge_cover": select_edge_cover_plan}
-# the single strategy id the cover is registered under; N<int> so the bundle's ordering key parses.
 SEL_STRATEGY_ID = "N1"
 
 
@@ -56,8 +52,8 @@ def _views_from_names(names: Iterable[str], dep):
 
 def build_explicit_cover_bundle(config, query_spec, cover_names, workload, *,
                                 query_spec_source="registry", query_spec_fingerprint=None) -> StrategyCatalogBundle:
-    """build the single-strategy bundle for an explicit cover, exactly as the catalog would for a
-    materialized strategy (bushy update + compose plans from plan_build.build_plan)."""
+    """build the single-strategy bundle for an explicit cover (bushy update and compose plans from
+    plan_build.build_plan)."""
     dep = dependency_graph_for_spec(query_spec)
     cover = _views_from_names(cover_names, dep)
     all_vars = set(dep.variables)

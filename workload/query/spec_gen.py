@@ -1,33 +1,24 @@
 """Parametric MATCH_RECOGNIZE query-spec generator.
 
 Emits specs for any pattern length n, topology shape, and band tightness.
-
-CLI: ,,python3 workload/query/campaign_spec_gen.py --emit-n5-probe''  -> q5_{chain,star,cycle}.
 """
-import json, argparse
-from pathlib import Path
 
-# Types produced by execution/sql_generator.py. Index = variable.
 RARE_TYPES = ["ROBBERY", "BATTERY", "MOTOR VEHICLE THEFT", "BURGLARY", "NARCOTICS", "ASSAULT"]
-SPECDIR = Path("execution/query_specs/overnight_suite")
 
 
 def var_name(i: int) -> str:
-    return chr(65 + i)  # A, B, C, ...
+    return chr(65 + i)
 
 
 def edges(n: int, shape: str):
     """Dependent-predicate edge set (i<j index pairs) for a topology on n variables."""
-    if shape == "chain":        return [(i, i + 1) for i in range(n - 1)]            # path P_n
-    if shape == "star":         return [(0, j) for j in range(1, n)]                 # A central
+    if shape == "chain":        return [(i, i + 1) for i in range(n - 1)]
+    if shape == "star":         return [(0, j) for j in range(1, n)]
     if shape == "cycle":        return [(i, i + 1) for i in range(n - 1)] + [(0, n - 1)]
     if shape in ("clique", "complete"): return [(i, j) for i in range(n) for j in range(i + 1, n)]
     if shape == "triangle":     return [(0, 1), (1, 2), (0, 2)] + [(i, i + 1) for i in range(2, n - 1)]
-    #                             K3 on the first three vars plus a pendant chain; edge order
-    #                             (chain first, then the closing (0,2)) is fixed for byte-stable output.
     if shape == "diamond":      return [(0, 1), (0, 2), (0, 3), (1, 2), (2, 3)] if n == 4 else _diamond_err(n)
-    #                             K4 minus the (1,3) edge.
-    if shape == "long_edge":    return [(0, n - 1)]                                  # single far edge
+    if shape == "long_edge":    return [(0, n - 1)]
     if shape == "independent":  return []
     raise ValueError(f"unknown shape {shape!r}")
 
@@ -38,8 +29,8 @@ def _diamond_err(n):
 
 def edge_classes(n, shape, predicate_classes="band"):
     """Per-edge dependent-predicate class list. 'band' (default) / 'equi' uniform;
-    'mixed' = DETERMINISTIC alternation by edge index (band, equi, band, ...), never
-    random."""
+        'mixed' = deterministic alternation by edge index (band, equi, band, ...).
+    """
     es = edges(n, shape)
     if predicate_classes == "mixed":
         return ["band" if i % 2 == 0 else "equi" for i in range(len(es))]
@@ -93,20 +84,3 @@ def make_spec(n, shape, band_lon=0.05, band_lat=0.02, sel_class="rare", types=No
         "partition_by": [], "window": None, "kleene_annotations": [],
     }
     return spec
-
-
-def write_spec(spec) -> Path:
-    p = SPECDIR / f"{spec['name']}.json"
-    p.write_text(json.dumps(spec, indent=2))
-    return p
-
-
-if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--emit-n5-probe", action="store_true", help="emit q5_{chain,star,cycle} for the feasibility probe")
-    a = ap.parse_args()
-    if a.emit_n5_probe:
-        for shape in ("chain", "star", "cycle"):
-            sp = make_spec(5, shape)
-            p = write_spec(sp)
-            print(f"wrote {p}  edges={[d['variables'] for d in sp['dependent_predicates']]}")

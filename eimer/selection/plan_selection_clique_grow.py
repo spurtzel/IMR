@@ -1,10 +1,10 @@
-"""clique-grow plan selector: picks a materialized-view cover by amortized cost.
+"""Clique-grow plan selector (Algorithm 1): picks a materialized-view cover by amortized cost.
 
-ranks covers by TotalCost = Q * compose_cost + kappa * B * maintenance, where
-maintenance sums each view's prefix cardinality. the search descends from the flat
-edge cover by local merge/drop moves, compares an empty and a full-pattern anchor,
-and takes the global argmin (deterministic tie-break). an optional storage budget M
-repairs the pick to fit. compose cost comes from best_bushy_tree.
+Ranks covers by TotalCost = Q * compose_cost + kappa * B * maintenance, where
+maintenance sums each view's prefix cardinality. The search descends from the flat
+edge cover by local merge/drop moves, compares the all-singleton cover and, by default only for
+patterns without dependent conditions, the full-pattern view (full_anchor), and takes the global
+argmin. An optional storage budget M repairs the pick to fit. Compose cost comes from `best_bushy_tree`.
 """
 from __future__ import annotations
 
@@ -19,22 +19,18 @@ from eimer.selection.plan_build import PlanResult, build_plan, label, valid_view
 from eimer.sql.sql_render import is_kleene_variable
 from eimer.selection.state_size_trino import peak_state_bytes_trino
 
-# c_M/c_C maintenance-to-compose unit ratio
 KAPPA_DEFAULT = 150.0
 
 
 def _cyclic_bloat(varset, dep, wl, bidx):
-    """build-cost correction for cyclic views (join-order invariant). a view's induced
-    subgraph has c = |E| - (|V|-1) closing edges that no join order can apply as join keys;
-    each is a residual that bloats the transient by 1/sigma. returns the bloat over the
-    loosest c edges (a lower bound), or 1.0 when the view is acyclic and the model is exact."""
+    """Build-cost correction for cyclic views. A view's induced subgraph has
+        c = |E| - (|V|-1) closing edges that no join order can apply as join keys; each
+        bloats the transient by 1/sigma. Returns the bloat over the loosest c edges,
+        or 1.0 when the view is acyclic.
+    """
     vs = set(varset)
     edges = [(e.var_left, e.var_right) for e in dep.edges if {e.var_left, e.var_right} <= vs]
     if getattr(wl, "window_rule", "pairwise") == "chain":
-        # chain rule (DuckDB/Esper backends): a window is enforced along the adjacent pairs of the build, so an
-        # edge that carries only window components (declared or propagated) closes no cycle the build must pay
-        # for; only value edges (bands, equalities) between non-adjacent variables are residuals, priced by
-        # their value selectivity.
         edges = [(a, b) for a, b in edges if _edge_sigma(wl, bidx, a, b, windows=False) < 1.0]
         c = len(edges) - (len(vs) - 1)
         if c <= 0:
@@ -52,8 +48,9 @@ def _cyclic_bloat(varset, dep, wl, bidx):
 
 
 def _prefix_card(varset, wl, bidx, pos, dep):
-    """maintenance-cost driver: |prefix(V)| (V minus its newest variable, the delta driver),
-    inflated by V's cyclic build-bloat. singletons have no prefix."""
+    """Maintenance-cost driver: |prefix(V)| (V minus its newest variable),
+        inflated by V's cyclic build-bloat. Singletons have no prefix.
+    """
     if len(varset) < 2:
         return 0.0
     last = max(varset, key=lambda v: pos[v])
@@ -62,9 +59,9 @@ def _prefix_card(varset, wl, bidx, pos, dep):
 
 
 def _compose_cost(dep, cover_sets, wl, bidx):
-    """bushy compose-tree split-cost over the cover views plus live singletons for uncovered
-    variables; a single-node compose yields 0. ij_over_fp=1.0 makes the equi-step constant
-    selection-inert for cover ranking (join_order keeps its own default for absolute scores)."""
+    """Bushy compose-tree split-cost over the cover views plus live singletons for uncovered
+        variables; a single-node compose yields 0.
+    """
     all_vars = set(dep.variables)
     covered = set().union(*cover_sets) if cover_sets else set()
     nodes = {make_view(s) for s in cover_sets} | {make_view([v]) for v in sorted(all_vars - covered)}
@@ -73,9 +70,9 @@ def _compose_cost(dep, cover_sets, wl, bidx):
 
 
 def _canon(cover_sets):
-    """canonical view-set of a cover: dedup, then drop any view that is a proper subset of
-    another (keeping it would double-count maintenance and grant a phantom compose discount).
-    cost depends only on this canonical set."""
+    """Canonical view-set of a cover: deduplicated, with every view that is a proper subset of
+        another dropped.
+    """
     cs = list({frozenset(s) for s in cover_sets})
     return [s for s in cs if not any(s != t and s < t for t in cs)]
 
@@ -88,7 +85,7 @@ def _total_cost(dep, cover_sets, wl, bidx, B, Q, kappa):
 
 
 def _n_equi(cover_sets):
-    """number of compose view-pairs sharing >=1 variable (equi-join steps)."""
+    """Number of compose view-pairs sharing at least one variable (equi-join steps)."""
     cs = [set(s) for s in cover_sets]
     return sum(1 for i in range(len(cs)) for j in range(i + 1, len(cs)) if cs[i] & cs[j])
 
@@ -110,13 +107,14 @@ def _skey(cover, pos):
 
 
 def _hill_climb(start, cost, vvset, pos, *, allow_drop):
-    """descend from ,,start'' by the single best TotalCost-lowering move each step: merge two
-    overlapping views (clique growth), or drop a view. deterministic, ranking moves by
-    (cost, canonical key)."""
+    """Descends from `start` by the single best TotalCost-lowering move each step: merge two
+        overlapping views (clique growth), or drop a view. Moves are ranked by
+        (cost, canonical key).
+    """
     cover = _sorted(start, pos)
     while True:
         base = cost(cover)
-        moves = []  # (newcost, canonical-key, newcover)
+        moves = []
         for i in range(len(cover)):
             for j in range(i + 1, len(cover)):
                 if cover[i] & cover[j]:
@@ -136,7 +134,7 @@ def _hill_climb(start, cost, vvset, pos, *, allow_drop):
 
 
 def _enforce_budget(cover, cost, vvset, max_views, pos):
-    """reduce a cover to <= max_views, preferring the least-cost merge, then the least-cost drop."""
+    """Reduces a cover to at most max_views views, taking the least-cost merge, then the least-cost drop."""
     cover = _sorted(_canon(cover), pos)
     while len(cover) > max_views:
         cands = []
@@ -157,25 +155,25 @@ def _enforce_budget(cover, cost, vvset, max_views, pos):
 
 def select_clique_grow_plan(dep, wl, *, max_views=None, query_batches=None, kappa=KAPPA_DEFAULT, profile=None,
                             max_storage_rows=None, max_storage_bytes=None, peak_bytes_fn=None, full_anchor="edgeless"):
-    """amortized-cost cover selection: descends from the flat edge cover, compares the empty
-    and full-pattern anchors, and returns the global argmin as a PlanResult (deterministic
-    tie-break). the cover is materialized via build_plan, uncovered variables filling in as
-    singletons. ,,profile'' is accepted for call-site parity but ignored.
+    """Amortized-cost cover selection (Algorithm 1): descends from the flat edge cover, compares the
+        all-singleton and full-pattern anchors, and returns the global argmin as a PlanResult. The cover
+        is materialized via `build_plan`, uncovered variables filling in as singletons. `profile` is
+        accepted and ignored.
 
-    max_views: optional structural cap on cover size (forced least-cost merges/drops); default
-    None lets the cost model decide the size.
+        max_views: optional cap on cover size; default None lets the cost model decide the size.
 
-    full_anchor: "edgeless" (default) = the full-pattern view competes only when the edge-cover
-    seed is empty (patterns without dependent edges); otherwise the descent decides (it may still
-    merge up to the full view on its own). "always" = the anchor competes everywhere. False = never.
+        full_anchor: "edgeless" (default) = the full-pattern view competes only when the edge-cover
+        seed is empty (patterns without dependent edges). "always" = the anchor competes everywhere.
+        False = never.
 
-    max_storage_bytes: storage budget M. take the unconstrained pick, then drop the view with
-    the least cost increase per byte freed until the predicted peak fits M; the anchors that fit
-    M then compete with the repaired cover, and the empty anchor always fits, so selection never
-    fails. None (default) = M=inf. mutually exclusive with max_storage_rows.
+        max_storage_bytes: storage budget M. Takes the unconstrained pick, then drops the view with
+        the least cost increase per byte freed until the predicted peak fits M; the anchors that fit
+        M then compete with the repaired cover. None (default) = no budget. Mutually exclusive with
+        max_storage_rows.
 
-    peak_bytes_fn: optional byte-model override, fn(cover_sets, dep, wl, query_batches=...) ->
-    int. default = the calibrated trino/iceberg parquet model (peak_state_bytes_trino)."""
+        peak_bytes_fn: optional byte-model override, fn(cover_sets, dep, wl, query_batches=...) ->
+        int. Default is `peak_state_bytes_trino`.
+    """
     dep_exec, wl_exec = dep, wl
     if os.environ.get("EIMER_SELECT_ON_DERIVED") != "1":
         dep, wl = explicit_selection_inputs(dep, wl)
@@ -184,9 +182,6 @@ def select_clique_grow_plan(dep, wl, *, max_views=None, query_batches=None, kapp
     B = bidx
     Q = len(query_batches) if query_batches else B
     all_vars = set(dep.variables)
-    # kleene vars live in their own singleton cache, never inside a multi-variable view.
-    # vvset gates every multi-var view the search can introduce, so dropping kleene-containing
-    # views here keeps candidates clean; the kleene singletons are re-added at build time.
     kleene_vars = {v for v in all_vars if is_kleene_variable(v, dep)}
     vvset = {v for v in valid_views(dep) if not (set(v) & kleene_vars)}
 
@@ -195,9 +190,6 @@ def select_clique_grow_plan(dep, wl, *, max_views=None, query_batches=None, kapp
 
     edge_cover = _sorted({frozenset((e.var_left, e.var_right)) for e in dep.edges}, pos)
 
-    # candidate covers: the merge+drop descent from the edge-cover seed, plus the two anchors
-    # (,,full'' for edge-less patterns where the seed is empty; ,,empty'' for a drop-direction
-    # local minimum). each candidate is canonicalized and forced within budget.
     _edgeless = len(edge_cover) == 0
     _allow_full = (full_anchor == "always") or (full_anchor == "edgeless" and _edgeless) or (full_anchor is True)
     full_view = [frozenset(all_vars)] if (_allow_full and frozenset(all_vars) in vvset) else None
@@ -215,8 +207,6 @@ def select_clique_grow_plan(dep, wl, *, max_views=None, query_batches=None, kapp
         def peak(c):
             return _peak_fn([frozenset(s) for s in c], dep, wl, query_batches=query_batches)
 
-        # unconstrained pick, then budget repair: drop the view with the least cost increase per
-        # predicted byte freed, re-evaluated after every drop, until the peak fits M.
         cover = min(cands, key=lambda c: (cost(c), _skey(c, pos)))
         while cover and peak(cover) > max_storage_bytes:
             base_cost, base_peak = cost(cover), peak(cover)
@@ -229,25 +219,19 @@ def select_clique_grow_plan(dep, wl, *, max_views=None, query_batches=None, kapp
                 key = ((cost(nc) - base_cost) / freed, _skey(nc, pos))
                 if best is None or key < best[0]:
                     best = (key, nc)
-            if best is None:                       # no drop frees bytes -> drop all
+            if best is None:
                 cover = []
                 n_repair_drops += 1
                 break
             cover = best[1]
             n_repair_drops += 1
-        # the anchors that fit M compete with the repaired cover by (cost, canonical key);
-        # ,,[]'' is the empty anchor at predicted peak 0, so a fitting candidate always exists.
         anchors = [[]]
         if full_view is not None and peak(full_view) <= max_storage_bytes:
             anchors.append(_sorted(list(full_view), pos))
         cover = min([cover] + anchors, key=lambda c: (cost(c), _skey(c, pos)))
     elif max_storage_rows is None:
-        cover = min(cands, key=lambda c: (cost(c), _skey(c, pos)))  # global min; deterministic tie-break
+        cover = min(cands, key=lambda c: (cost(c), _skey(c, pos)))
     else:
-        # storage gate: keep only covers whose maintained set fits the row budget. the maintained
-        # set is the cover plus the mandatory Kleene singleton caches build_plan materializes
-        # (a no-op for Kleene-free queries). if the Kleene floor alone exceeds M, ,,feasible'' is
-        # empty and we fall back to the minimum-resident cover (flagged infeasible below).
         def _maint(c):
             return with_kleene_caches(dep, c, c, all_vars)[0]
         feasible = [c for c in cands if within_storage_budget(_maint(c), wl, max_storage_rows)]

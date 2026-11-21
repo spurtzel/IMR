@@ -1,9 +1,9 @@
-"""structural edge-cover plan selector.
+"""Structural edge-cover plan selector.
 
-picks the materialized-view cover from the dependency-graph value edges, with no cost model: each
-value edge X-Y becomes a 2-view make_view([X,Y]). the pick is the full edge-cover, capped to max_views
-by priority (sigma ascending, span descending); uncovered variables auto-fill as singleton base scans
-in build_plan. the returned .score is a structural proxy (-n_equi_join_steps).
+Picks the materialized-view cover from the dependency-graph value edges, with no cost model: each
+value edge X-Y becomes a 2-view make_view([X,Y]). The pick is the full edge-cover, capped to max_views
+by priority (sigma ascending, span descending); uncovered variables are filled in as singleton base scans
+in build_plan. The returned .score is a structural proxy (-n_equi_join_steps).
 """
 import os
 
@@ -14,16 +14,17 @@ from eimer.selection.plan_build import PlanResult, build_plan, valid_views, labe
 
 
 def _n_equi(cover):
-    """number of cover view-pairs that share a variable (equi-join steps in the compose)."""
+    """Number of cover view-pairs that share a variable (equi-join steps in the compose)."""
     cov = list(cover)
     return sum(1 for i in range(len(cov)) for j in range(i + 1, len(cov)) if cov[i] & cov[j])
 
 
 def select_edge_cover_plan(dep, workload, *, profile=None, max_views=4, query_batches=None,
                            max_storage_rows=None):
-    """structural edge-cover pick. returns a PlanResult whose .compose is the chosen cover: every
-    value-edge view the dependency graph defines, capped to max_views (uncovered variables auto-fill as
-    singleton base scans)."""
+    """Structural edge-cover pick. Returns a PlanResult whose .compose is the chosen cover: every
+        value-edge view the dependency graph defines, capped to max_views (uncovered variables are filled in as
+        singleton base scans).
+    """
     if workload is None:
         raise ValueError("select_edge_cover_plan requires a workload (build_plan needs a sigma source)")
     dep_exec, wl_exec = dep, workload
@@ -31,10 +32,9 @@ def select_edge_cover_plan(dep, workload, *, profile=None, max_views=4, query_ba
         dep, workload = explicit_selection_inputs(dep, workload)
     pos = dep.positions
     all_vars = set(dep.variables)
-    bidx = len(workload.batch_sizes)            # qlast snapshot for sigma/card (stable for ConstantSelectivity)
+    bidx = len(workload.batch_sizes)
     vvset = set(valid_views(dep))
 
-    # STEP 1: enumerate value-edge 2-views, de-dup by frozenset, tag with sigma + positional span
     seen, cand = set(), []
     for e in dep.edges:
         v = make_view([e.var_left, e.var_right])
@@ -47,16 +47,13 @@ def select_edge_cover_plan(dep, workload, *, profile=None, max_views=4, query_ba
                      "span": abs(pos[e.var_left] - pos[e.var_right])})
 
     if not cand:
-        cover = frozenset()                     # edgeless pattern: only case the empty cover is allowed
+        cover = frozenset()
         capped = False
     else:
-        # STEP 2: priority is smallest/most-selective first, then longest span, then canonical tiebreak
         cand.sort(key=lambda c: (c["sigma"], -c["span"], view_sort_key(c["view"], pos)))
 
-        # STEP 3: keep every value-edge view, so the cover is all views the dependency graph defines
         survivors = list(cand)
 
-        # STEP 4: cap to max_views by merging least-priority overlapping pairs that genuinely collapse, else drop
         capped = False
         while len(survivors) > max_views:
             capped = True
@@ -66,11 +63,11 @@ def select_edge_cover_plan(dep, workload, *, profile=None, max_views=4, query_ba
                 if not (a & b):
                     continue
                 u = make_view(set(a) | set(b))
-                if u not in vvset or len(u) > len(all_vars) - 1:   # never form the full-pattern view
+                if u not in vvset or len(u) > len(all_vars) - 1:
                     continue
                 if analytic_node_size(u, workload, bidx) > (analytic_node_size(a, workload, bidx)
                                                             + analytic_node_size(b, workload, bidx)):
-                    continue                                       # union is not a collapse, skip
+                    continue
                 survivors[i - 1] = {"view": u,
                                     "sigma": min(survivors[i - 1]["sigma"], survivors[i]["sigma"]),
                                     "span": max(survivors[i - 1]["span"], survivors[i]["span"])}
@@ -78,14 +75,9 @@ def select_edge_cover_plan(dep, workload, *, profile=None, max_views=4, query_ba
                 merged = True
                 break
             if not merged:
-                survivors.pop()                                    # drop the least-priority tail edge
+                survivors.pop()
 
-        # STEP 4b: storage gate (rows). tighten until maintained resident rows fit M: prefer a
-        # resident-reducing merge (same guards as STEP 4), else drop the largest-resident survivor.
-        # never drop below one view; if even that plus forced Kleene caches exceeds M, flag infeasible.
         if max_storage_rows is not None:
-            # maintained set = the surviving cover views plus the mandatory Kleene singleton caches
-            # build_plan force-materializes (no-op for Kleene-free queries); gate on the true resident.
             def _maint_survivors():
                 cv = [c["view"] for c in survivors]
                 return with_kleene_caches(dep, cv, cv, all_vars)[0]
@@ -115,7 +107,6 @@ def select_edge_cover_plan(dep, workload, *, profile=None, max_views=4, query_ba
                 del survivors[drop_i]
         cover = frozenset(c["view"] for c in survivors)
 
-    # STEP 5: build the plan; uncovered variables auto-fill as singletons in compose
     strategy, evaluation_plan, _ = build_plan(dep_exec, cover, cover, all_vars, workload=wl_exec)
     cert = {"selector": "edge_cover",
             "n_edges": len(seen), "n_kept": len(cover), "n_equi_join_steps": _n_equi(cover),

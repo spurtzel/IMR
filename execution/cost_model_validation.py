@@ -37,7 +37,6 @@ from eimer.workload import Selectivities, Workload
 
 
 BENCHMARK_RHO = 1000.0
-# the per-run measurement filename ,,run<N>_cost_validation_measurements.csv'' (captures N).
 RUN_MEASUREMENTS_RE = re.compile(r"^run(\d+)_cost_validation_measurements\.csv$")
 
 
@@ -160,8 +159,8 @@ def resolve_run_plan_descriptor(
 
 
 def _recorded_explicit_cover(catalog_payload: Mapping[str, object]) -> list[str] | None:
-    """The view names of the executed cover for an explicit-cover run: taken from run_config
-    (preferred) or the stored strategy summary. None for a catalog with no such record."""
+    """The view names of the executed cover for an explicit-cover run, from run_config or the stored
+    strategy summary; None if neither records it."""
     from explicit_cover import SEL_STRATEGY_ID
 
     run_config = catalog_payload.get("run_config")
@@ -545,9 +544,6 @@ def process_run_dir(
         selectivities=selectivities,
     )
 
-    # explicit-cover runs register the selector's pick under SEL_STRATEGY_ID; the enumerated index's
-    # same-id strategy is a different (full-view) plan, so rebuild that strategy from the recorded
-    # cover to cost-validate the plan that actually ran.
     explicit_cover_names = _recorded_explicit_cover(catalog_payload)
     if explicit_cover_names:
         from explicit_cover import SEL_STRATEGY_ID, _views_from_names

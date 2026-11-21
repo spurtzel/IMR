@@ -1,10 +1,5 @@
 {
  "name": "chicago_Q3",
- "suite_metadata": {
-  "pattern_length": 4,
-  "shape": "chain",
-  "doc": "Break-in followed by vehicle theft in the same patrol beat within a day.; the spree spreads: theft then criminal damage nearby"
- },
  "variables": [
   {
    "name": "A",

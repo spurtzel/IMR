@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
 """GDYN baseline on Trino: dynamic-Yannakakis-style evaluation of the chain query (with or without a window) in SQL.
 
-Instead of materialized views of partial matches, GDYN keeps one reduced set per pattern variable (LIVE_<v>: the ids of
-the events of <v>'s type that have a continuation up to the last variable along the chain) and enumerates the result
-from these sets at query time.
+GDYN keeps one reduced set per pattern variable (LIVE_<v>: the ids of the events of <v>'s type that have a
+continuation up to the last variable along the chain) and enumerates the result from these sets at query time.
 
-Per batch (the paper's protocol; ingestion into the history table is untimed, as for EIMER):
+Per batch (ingestion into the history table is untimed):
   update   bottom-up along the chain, one statement group per variable: the new members of LIVE_<v> are the history
            events of <v>'s type with a chain successor among the new members of the next variable (the batch itself
            for the last one) that are not yet in LIVE_<v>;
   query    top-down enumeration: SEL_1 = the live first-variable events, SEL_j+1 = SEL_j extended by one variable
-           (per first event the latest continuation, the result of MATCH_RECOGNIZE with greedy gaps). A window makes
-           the query cyclic: each extension then checks the remaining variables with one EXISTS over their join, and
-           every pair condition carries the window (a match's events all lie within W of its first event), as EIMER's
-           views do. Without a window the query is acyclic and the reduced sets alone guarantee a continuation.
+           (per first event the latest continuation, the result of MATCH_RECOGNIZE with greedy gaps). With a window
+           the query is cyclic: each extension checks the remaining variables with one EXISTS over their join, and
+           every pair condition carries the window. Without a window the query is acyclic.
 The reduced sets are maintained after every batch; the query phase runs on the queried batches only.
-The join order is the chain order as written (the session disables join reordering).
+The join order is the chain order as written.
 """
 from __future__ import annotations
 
@@ -30,7 +28,7 @@ DDL = "id BIGINT, time TIMESTAMP(6), ts TIMESTAMP(6), primary_type VARCHAR, etyp
 
 class ChainQuery:
     """chain A Z* B Z* ... over the generated events: variable i has type T<i>, consecutive variables are joined by
-    the lon/lat band; with ,,w_ms'' > 0 the last variable lies within the window of the first (cyclic query)."""
+    the lon/lat band; with `w_ms` > 0 the last variable lies within the window of the first (cyclic query)."""
 
     def __init__(self, k: int, w_ms: int, half_width=(0.02, 0.02)):
         assert w_ms >= 0 and w_ms % 1000 == 0, "the window is given in whole seconds (0 = no window)"
@@ -55,7 +53,7 @@ class ChainQuery:
         if (x, y) in self.consec:
             out.append(self.band_sql(x, y, col))
         if self.window:
-            out.append(self.win_sql(x, y, col))   # the window on (first, last); the bound it implies on every other pair
+            out.append(self.win_sql(x, y, col))
         return out
 
 
@@ -64,10 +62,9 @@ class GdynTrino:
                  state_fn=None):
         self.client, self.q, self.table, self.N, self.B, self.T, self.keys = client, q, table, n, batches, wall_s, keys
         self.live = {v: f"LIVE_{v}" for v in q.vs[:-1]}
-        self.qb = None if query_batches is None else frozenset(query_batches)   # None = the query runs after every batch
-        self.state_fn = state_fn   # optional: fn(client, tables) -> the persistent state's size, taken untimed at the end
+        self.qb = None if query_batches is None else frozenset(query_batches)
+        self.state_fn = state_fn
 
-    # ---- statement generators
     @staticmethod
     def hist_col(a):
         return lambda v, cn: f"{a}.{cn}"
@@ -80,7 +77,7 @@ class GdynTrino:
         return [self.q.win_sql(self.q.vs[0], vj, lambda v, cn: acc[v](v, cn))] if (self.q.window and j >= 2) else []
 
     def exists_chain(self, j: int, acc: dict) -> str:
-        """one EXISTS over the join of the remaining variables, in chain order."""
+        """one EXISTS over the remaining variables."""
         if j == self.q.k - 1:
             return ""
         src, conds, acc2 = [], [], dict(acc)
@@ -126,7 +123,6 @@ class GdynTrino:
         out += ["DELETE FROM RES_DY", f"INSERT INTO RES_DY SELECT {', '.join(self.keys)} FROM SEL_{self.q.k}"]
         return out
 
-    # ---- execution
     def _drop(self, t):
         try:
             self.client.execute(f"DROP TABLE IF EXISTS {t}")
@@ -137,7 +133,7 @@ class GdynTrino:
         return ["HIST_DY", "BAT_DY", "RES_DY", *self.live.values(), *[f"NL_{v}" for v in self.q.vs[:-1]], *[f"SEL_{j}" for j in range(1, self.q.k + 1)]]
 
     def setup(self):
-        """all scratch tables are created once (untimed); per batch only DELETE + INSERT ... SELECT run."""
+        """creates the scratch tables."""
         self.teardown()
         cols = lambda vs: ", ".join(f"{v}_id BIGINT, {v}_ts TIMESTAMP(6), {v}_lon DOUBLE, {v}_lat DOUBLE" for v in vs)
         self.client.execute(f"CREATE TABLE HIST_DY ({DDL})")
@@ -157,18 +153,18 @@ class GdynTrino:
 
     @tl.track_peak
     def run(self):
-        """returns a record dict and the final key set (None unless it finished). ,,wall_s'' bounds every statement and,
-        cumulatively, the whole arm."""
+        """returns a record dict and the final key set (None unless it finished). `wall_s` bounds every statement and,
+        cumulatively, the whole approach."""
         pb, tot = [], 0.0
         t_start = time.time()
         self.client.execute(f"SET SESSION query_max_run_time = '{int(self.T)}s'")
         self.setup()
-        upd_stmts = [tl.clear_sql(s) for s in self.update_stmts()]   # in-memory tables: emptied with TRUNCATE
+        upd_stmts = [tl.clear_sql(s) for s in self.update_stmts()]
         qry_stmts = [tl.clear_sql(s) for s in self.query_stmts()]
         try:
             for b in range(1, self.B + 1):
                 lo, hi = ((b - 1) * self.N) // self.B, (b * self.N) // self.B
-                self._drop("BAT_DY")   # ingestion, untimed
+                self._drop("BAT_DY")
                 self.client.execute(f"CREATE TABLE BAT_DY AS SELECT * FROM {self.table} WHERE id > {lo} AND id <= {hi}")
                 self.client.execute("INSERT INTO HIST_DY SELECT * FROM BAT_DY")
                 upd = qry = 0.0

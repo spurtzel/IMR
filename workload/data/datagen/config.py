@@ -1,20 +1,14 @@
 """Configuration for the external dataset generator.
 
-All knobs are validated eagerly at construction; a config that constructs is a
-config the generator can realize (calibration feasibility is checked separately
-in spatial.calibrate, which raises with the achievable range on miss).
-"""
+Values are validated at construction; calibration feasibility is checked in
+spatial.calibrate, which raises with the achievable range."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# The benchmark event-schema contract (canonical_query.py required_event_schema):
-# generated tables must provide exactly these columns, in this order.
 EVENT_COLUMNS = ("id", "time", "ts", "primary_type", "etype", "lon", "lat")
 
-# Mirrors sql_generator.py's etype CASE: the three canonical query types map to
-# R/B/M, everything else to Z.
 CANONICAL_ETYPE_MAPPING = {
     "ROBBERY": "R",
     "BATTERY": "B",
@@ -22,8 +16,6 @@ CANONICAL_ETYPE_MAPPING = {
 }
 DEFAULT_ETYPE_TAG = "Z"
 
-# TIMESTAMP(6) resolution: timestamps are strictly increasing on a microsecond
-# grid, so mean rates above 1e6 events/second cannot be represented tie-free.
 MAX_RHO_EVENTS_PER_SECOND = 1_000_000.0
 
 DEFAULT_EPOCH = "2020-01-01 00:00:00"
@@ -35,11 +27,8 @@ class SpatialConfig:
     scaled) domain plus up to cluster_count equal-weight axis-aligned boxes.
 
     The realized layout (cluster fraction c, domain scale s, cluster count and
-    positions) is produced by spatial.calibrate() from a BandTarget; this
-    config only fixes the family. Scaling is origin-anchored: lon/lat origins
-    never move, so absolute coordinate literals in specs (lon stripes) keep
-    their meaning.
-    """
+    positions) is produced by spatial.calibrate() from a BandTarget. Scaling is
+    origin-anchored: lon/lat origins stay fixed."""
 
     lon_origin: float = -87.90
     lat_origin: float = 41.60
@@ -84,7 +73,7 @@ class BandTarget:
 class BurstConfig:
     """Periodic burst structure: within each period of period_rows rows, the
     first burst_rows rows are spaced rate_multiplier times tighter than the
-    base grid; the remaining rows are spaced wider so the mean rate stays at
+    base grid; the remaining rows are spaced wider, with mean rate
     TemporalConfig.rho."""
 
     burst_rows: int
@@ -102,12 +91,11 @@ class BurstConfig:
 
 @dataclass(frozen=True)
 class EquiTarget:
-    """Calibration-free equi-predicate selectivity: a categorical key balanced
-    over K = round(1/sigma) values, shuffled on a dedicated rng stream so it is
-    independent of the spatial clusters (joint band-and-equi selectivity is then
-    the product of the marginals). sigma is realized exactly iff 1/sigma is an
-    integer, else as 1/round(1/sigma), recorded in
-    GenerationResult.equi_predicted_sigma."""
+    """Equi-predicate selectivity without calibration: a categorical key balanced
+    over K = round(1/sigma) values, shuffled on a dedicated rng stream, independent
+    of the spatial clusters (joint band-and-equi selectivity is the product of the
+    marginals). sigma is realized exactly iff 1/sigma is an integer, else as
+    1/round(1/sigma), recorded in GenerationResult.equi_predicted_sigma."""
 
     sigma: float
     column: str = "ekey"
@@ -138,7 +126,6 @@ class TemporalConfig:
                 "tie-free sub-microsecond spacing (timestamp-tie hazard)"
             )
         if self.burst is not None:
-            # Off-phase spacing must stay representable (>= 1 microsecond).
             burst = self.burst
             off_rows = burst.period_rows - burst.burst_rows
             off_spacing = (burst.period_rows - burst.burst_rows / burst.rate_multiplier) / (
@@ -165,10 +152,6 @@ class DatagenConfig:
     equi: EquiTarget | None = None
     etype_mapping: tuple[tuple[str, str], ...] = tuple(CANONICAL_ETYPE_MAPPING.items())
     other_type: str = "OTHER"
-    # Per edge, n_u * n_v * sigma expected matching pairs below this floor make
-    # the realized sigma statistically unresolvable (it can be exactly 0, which
-    # the workload contract rejects). Checked against the two smallest
-    # configured rates at generation time; 0 disables.
     min_expected_pair_hits: int = 100
 
     def __post_init__(self) -> None:

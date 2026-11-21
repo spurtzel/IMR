@@ -1,8 +1,6 @@
-"""cost-estimation for executable evaluation plans.
+"""cost estimation for executable evaluation plans.
 
-an adapter around the cost formulas: preserves the scalar ,,plan_cost'' while exposing per-batch
-and per-operator rows for validation artifacts.
-"""
+wraps the cost formulas: returns the scalar `plan_cost` plus per-batch and per-operator rows."""
 
 from __future__ import annotations
 
@@ -213,9 +211,6 @@ def estimate_executable_plan(executable_plan: ExecutableEvaluationPlan, workload
             f"trace total {total_cost} does not match plan_cost scalar total {scalar_total}"
         )
 
-    # update-side features for the ranking layer (do not affect total_cost). build cross-product
-    # per materialized multi-var view = product of its constituents' analytic singleton sizes;
-    # iterate update target views, not compose cover nodes, since build cost is update-phase.
     update_build_crossproduct = 0.0
     for update_op in plan.update_ops:
         if len(update_op.target_view) >= 2:
@@ -224,8 +219,6 @@ def estimate_executable_plan(executable_plan: ExecutableEvaluationPlan, workload
                 product *= float(_analytic_singleton_size(workload, workload.k, variable))
             update_build_crossproduct += product
     composition_view_count = float(len(plan.update_ops))
-    # per-INSERT commit floor: paid once per executed update statement, not once per view;
-    # counted from the trace so schedules that skip update batches stay correct.
     update_statement_count = float(sum(1 for op in all_op_estimates if op.op_kind == "update"))
 
     return CostEstimateTrace(

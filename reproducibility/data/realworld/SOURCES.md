@@ -4,14 +4,14 @@ Each file holds 100,000 consecutive rows of a public data set, in time order, wi
 the timestamp column `time`. The experiment (`reproducibility/run_trino_realworld.sh`) checks each file against the
 SHA-256 in `manifest.json` before it loads it. The 15 queries are in `specs/<table>/Q1.json` to `Q5.json`.
 
-| File | Source | Licence line of the source | Attribution |
+| File | Source | License line of the source | Attribution |
 |---|---|---|---|
 | `taxi_100000.parquet` | New York City Taxi and Limousine Commission, *TLC Trip Record Data*, <https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page> | none stated on the page; the terms of use of nyc.gov apply | New York City Taxi and Limousine Commission (TLC) |
 | `chicago_100000.parquet` | Chicago Police Department, *Crimes - 2001 to Present*, City of Chicago Data Portal, <https://data.cityofchicago.org/Public-Safety/Crimes-2001-to-Present/ijzp-q8t2> | "See Terms of Use" | Chicago Police Department |
 | `ecommerce_100000.parquet` | Michael Kechinov, *eCommerce Behavior Data from Multi-category Store*, Kaggle, <https://www.kaggle.com/datasets/mkechinov/ecommerce-behavior-data-from-multi-category-store> | "Data files © Original Authors" | REES46 Marketing Platform, <https://rees46.com/> |
 
-Rows taken (the column `real_time` is the source's own timestamp; `time` and `ts` are the running timestamp the
-experiment's batches and windows use):
+Rows taken (the column `real_time` is the source's own timestamp, on which the queries state their time windows; `time`
+and `ts` are the running timestamp that orders the rows and forms the batches):
 
 | File | `real_time` of the first and the last row |
 |---|---|

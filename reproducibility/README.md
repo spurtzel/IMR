@@ -50,10 +50,10 @@ call these values "the paper's". The figures of our runs at `SCALE=paper`, with 
 ## Requirements
 
 - Linux with bash 4.4 or newer and Docker or Podman.
-- Time: with the small defaults, all ten scripts together take about two and three quarter hours (2 h 43 min on a laptop). At `SCALE=paper` the runs take hours
+- Time: with the small defaults, all ten scripts together take about two and three quarter hours. At `SCALE=paper` the runs take hours
   to days; Fig. 8a takes more than a day.
 - Memory: with the small defaults, Trino runs with a heap of 8 GB. At `SCALE=paper`, one approach may use up to 12 GB on
-  DuckDB and Esper, and the real-world experiment starts Trino with a heap of 40 GB, because the tables are held in memory.
+  DuckDB and Esper, and the real-world experiment starts Trino with a heap of 40 GB.
 
 ## Scale
 
@@ -124,17 +124,14 @@ Notes:
   workloads.
 - To run the window panel of Fig. 9 with the paper's type rates (first type at 10 %, last type at 1 % or 0.1 %), use the
   command below once per `LAST_RATE` (`0.01`, `0.001`). Both runs write to the same directory, and the figure then shows
-  both rates. Native MR takes hours per workload on Trino; our run of this kind
-  ([`results/fig9_trino_type_rates/`](results/fig9_trino_type_rates/README.md)) used `WB=10 WS=200,500,1000` and, for
-  its batch panel, `PANELS=B NBS=50000 BS=1,2,5,10 BW=500` with the same rates.
+  both rates. Our run of this kind ([`results/fig9_trino_type_rates/`](results/fig9_trino_type_rates/README.md)) used
+  `WB=10 WS=200,500,1000` and, for its batch panel, `PANELS=B NBS=50000 BS=1,2,5,10 BW=500` with the same rates.
   `FIRST_RATE=0.10 LAST_RATE=0.001 NW=50000 WB=50 SIGMAS=0.05 PANELS=W OUT_NAME=trino_fig9_type_rates bash reproducibility/run_trino_fig9.sh`
-- The memory experiment stores the state in compressed columnar files. Its size in MB is not comparable with the paper's;
-  the order of the strategies by persistent state is.
 
 ## Without containers
 
 With the packages of `requirements.txt` installed (and, for Esper, a Java 21 runtime and `mvn package` in
-`backends/esper/java`), the same experiments run directly: `bash reproducibility/docker/in_container/reproduce_duckdb.sh`
+`backends/esper/java`), the same experiments run directly: `bash reproducibility/docker/in_container/reproduce_duckdb.sh`,
 `bash reproducibility/docker/in_container/reproduce_esper.sh` and
 `bash reproducibility/docker/in_container/reproduce_selection_time.sh` (output under `reproducibility/out/`). The Trino experiments run with
 `bash reproducibility/docker/in_container/reproduce_trino.sh fig8` (or `fig9`, `fig10`, `kleene`, `budget_shift`,

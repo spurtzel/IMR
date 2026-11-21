@@ -1,6 +1,7 @@
-"""command-line entry point: compile a MATCH_RECOGNIZE query and emit a parser
+"""Command-line entry point: compiles a MATCH_RECOGNIZE query and emits a parser
 artifact (ir, dependency graph, subpatterns, strategies) or a full planned pipeline
-summary with generated sql."""
+summary with generated sql.
+"""
 from __future__ import annotations
 
 import argparse
@@ -26,7 +27,7 @@ EMIT_CHOICES = ("ir", "dependency-graph", "valid-subpatterns", "strategies")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """build the argument parser for the cli."""
+    """Builds the argument parser for the cli."""
     parser = argparse.ArgumentParser(
         description="EIMER: parser/dependency-graph analysis plus full pipeline planning and SQL generation"
     )
@@ -39,12 +40,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--emit",
         choices=EMIT_CHOICES,
         default=None,
-        help="Emit the legacy parser/dependency-graph artifact. Defaults to 'ir' when no full-pipeline options are used.",
+        help="Emit a parser/dependency-graph artifact. Defaults to 'ir' when no full-pipeline options are used.",
     )
     parser.add_argument(
         "--strategy-mode",
         choices=[item.value for item in StrategyMode],
-        help="Legacy strategy/view enumeration mode for --emit valid-subpatterns|strategies.",
+        help="Strategy/view enumeration mode for --emit valid-subpatterns|strategies.",
     )
 
     parser.add_argument("--base-table", default="events", help="Base table name for generated SQL")
@@ -63,7 +64,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def _resolve_strategy_mode(raw_value: str | None, emit: str) -> StrategyMode:
-    """pick the strategy enumeration mode, defaulting to dependency-restricted."""
+    """Picks the strategy enumeration mode, defaulting to dependency-restricted."""
     if emit not in {"valid-subpatterns", "strategies"}:
         if raw_value is None:
             return StrategyMode.DEPENDENCY_RESTRICTED
@@ -75,7 +76,7 @@ def _resolve_strategy_mode(raw_value: str | None, emit: str) -> StrategyMode:
 
 
 def _serialize_strategy_summary(strategy: StrategyWithPlans, positions: Dict[str, int]) -> Dict[str, Any]:
-    """summarize one strategy (view names, plan counts, join/condition tallies) as a json dict."""
+    """Summarizes one strategy (view names, plan counts, join/condition tallies) as a json dict."""
     join_type_counts = {join_type.value: 0 for join_type in JoinType}
     for edge in strategy.composition_join_graph.edges.values():
         join_type_counts[edge.join_type.value] += 1
@@ -104,7 +105,7 @@ def _serialize_strategy_summary(strategy: StrategyWithPlans, positions: Dict[str
 
 def _apply_strategy_filter(strategies: List[StrategyWithPlans], positions: Dict[str, int],
                            only_with_nc_subpattern: bool) -> List[StrategyWithPlans]:
-    """optionally keep only strategies with a non-contiguous subpattern."""
+    """Optionally keeps only strategies with a non-contiguous subpattern."""
     if not only_with_nc_subpattern:
         return strategies
 
@@ -117,7 +118,7 @@ def _apply_strategy_filter(strategies: List[StrategyWithPlans], positions: Dict[
 
 
 def _should_run_full_pipeline(args: argparse.Namespace) -> bool:
-    """true when the args request full-pipeline planning."""
+    """True when the args request full-pipeline planning."""
     return bool(
         args.dep_graph_json
         or args.output_json is not None
@@ -128,7 +129,7 @@ def _should_run_full_pipeline(args: argparse.Namespace) -> bool:
 
 
 def _run_legacy_emit_mode(args: argparse.Namespace) -> int:
-    """emit a single parser artifact (ir, dependency graph, subpatterns, or strategies) as json."""
+    """Emits a single parser artifact (ir, dependency graph, subpatterns, or strategies) as json."""
     if args.dep_graph_json:
         raise ValueError("--dep-graph-json is only supported in full-pipeline summary mode")
 
@@ -178,7 +179,7 @@ def _run_legacy_emit_mode(args: argparse.Namespace) -> int:
 
 
 def _run_full_pipeline_mode(args: argparse.Namespace) -> int:
-    """run the full planning pipeline, print/write the summary, and optionally generate sql."""
+    """Runs the full planning pipeline, prints/writes the summary, and optionally generates sql."""
     if args.dep_graph_json:
         dep_graph, all_strategies = build_from_dep_graph_json(args.dep_graph_json)
     else:
@@ -245,7 +246,7 @@ def _run_full_pipeline_mode(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """cli entry point: dispatch to the full pipeline or the emit path."""
+    """Cli entry point: dispatches to the full pipeline or the emit path."""
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 

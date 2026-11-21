@@ -13,7 +13,6 @@
 | Event types | uniform: each type at 5 % of the rows; skewed: the first and last type, or the two interior types, at 1 % and the others at 10 % |
 | Query schedule | after every batch |
 
-Bars show the total runtime. EIMER takes 85 s to 91 s on all six workloads and GDYN 235 s to 298 s, so EIMER is 2.8x to 3.5x
-faster. Neither approach changes by more than 15 % under the two skews.
-
 ![Skewed type frequencies](trino_fig10s_skew.png)
+
+Bars: total runtime.

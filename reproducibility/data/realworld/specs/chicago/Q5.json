@@ -1,10 +1,5 @@
 {
  "name": "chicago_Q5",
- "suite_metadata": {
-  "pattern_length": 2,
-  "shape": "chain",
-  "doc": "Enforcement response time: the soonest arrest in the same beat after a battery (reluctant gap = nearest)."
- },
  "variables": [
   {
    "name": "A",

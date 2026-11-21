@@ -1,10 +1,5 @@
 {
  "name": "ecommerce_Q4",
- "suite_metadata": {
-  "pattern_length": 3,
-  "shape": "kleene",
-  "doc": "Browsing depth before conversion: COUNT of views between a product's first view and its purchase by the same user, within a session.; cart -> view-burst -> purchase (disjoint classes)"
- },
  "variables": [
   {
    "name": "A",

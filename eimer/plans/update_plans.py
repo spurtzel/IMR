@@ -123,12 +123,8 @@ def _update_mode_for_view(view: View, dep_graph: DependencyGraph, dependent_vars
 
 
 def construct_canonical_update_plan(strategy: Strategy, dep_graph: DependencyGraph) -> UpdatePlan:
-    """directly construct the canonical update plan (,,enumerate_update_plans(strategy, dep_graph)[0]'')
-    without the ,,product()'' source-selection fan-out.
-
-    the empty selection sorts first for every view, so index 0 is the all-empty source selection,
-    reproducible in O(|strategy|).
-    """
+    """construct the canonical update plan, equal to `enumerate_update_plans(strategy, dep_graph)[0]`
+    (the all-empty source selection)."""
     positions = dep_graph.positions
     ordered_views = sorted(strategy, key=lambda view: view_sort_key(view, positions))
 
@@ -216,11 +212,9 @@ def enumerate_update_plans(strategy: Strategy, dep_graph: DependencyGraph) -> Li
 
 
 def best_bushy_source_tree(target_view, effective_sources, dep_graph, workload, batch_index):
-    """cost-based bushy join order for the UPDATE build of ,,target_view'' over its ,,effective_sources''.
-
-    reuses the compose subset-DP (:func:,,join_order.best_bushy_tree'') so the smallest / most-selective
-    operands join first, keeping the band cross-product intermediate small at long patterns. returns
-    ,,None'' for ,,<= 1'' source; reorder is a logically-equivalent join, identical to the canonical order."""
+    """cost-based bushy join order for the UPDATE build of `target_view` over its `effective_sources`,
+    using the compose subset-DP (:func:`join_order.best_bushy_tree`). returns `None` for `<= 1`
+    source."""
     sources = set(effective_sources)
     if len(sources) <= 1:
         return None
@@ -233,12 +227,8 @@ def best_bushy_source_tree(target_view, effective_sources, dep_graph, workload, 
 
 
 def with_bushy_source_trees(update_plan: UpdatePlan, dep_graph: DependencyGraph, workload, batch_index=None) -> UpdatePlan:
-    """attach cost-DP bushy ,,source_join_trees'' to an EXISTING update plan, preserving its source selections.
-
-    only ,,source_join_trees'' changes; ,,effective_sources'', ,,update_dag'', ,,topological_order'',
-    ,,last_variable_source'', and ,,update_mode_by_view'' stay untouched, so the emitter's leaf-equality
-    guard and the EXISTS anchor / band WHERE stay path-invariant. ,,batch_index'' defaults to the last
-    batch, where the band cross-product is largest."""
+    """attach cost-DP bushy `source_join_trees` to an existing update plan; only `source_join_trees`
+    changes. `batch_index` defaults to the last batch."""
     import dataclasses
 
     if batch_index is None:
@@ -252,9 +242,8 @@ def with_bushy_source_trees(update_plan: UpdatePlan, dep_graph: DependencyGraph,
 
 
 def construct_bushy_update_plan(strategy: Strategy, dep_graph: DependencyGraph, workload, batch_index=None) -> UpdatePlan:
-    """the canonical update plan with cost-based bushy ,,source_join_trees'' attached per target view
-    (:func:,,with_bushy_source_trees'' over :func:,,construct_canonical_update_plan''); the selector's
-    bushy-update entry point."""
+    """the canonical update plan with cost-based bushy `source_join_trees` attached per target view
+    (:func:`with_bushy_source_trees` over :func:`construct_canonical_update_plan`)."""
     return with_bushy_source_trees(
         construct_canonical_update_plan(strategy, dep_graph), dep_graph, workload, batch_index
     )

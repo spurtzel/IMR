@@ -13,8 +13,6 @@
 | Event types | - (real data) |
 | Query schedule | after every batch |
 
-EIMER finishes all 15 queries. Native MR finishes only Chicago Q3, where it is 75x slower than EIMER. For the other 14
-queries, the speed-up is a lower bound (hatched): 29x to 244x. The lower panel shows EIMER's persistent state plus its
-peak query memory.
-
 ![Fig. 12](trino_fig12_realworld.png)
+
+Upper panel: speed-up of EIMER over native MR (hatched: a lower bound, native MR did not finish); lower panel: EIMER's persistent state plus its peak query memory.

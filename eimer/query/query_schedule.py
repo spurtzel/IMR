@@ -1,11 +1,10 @@
 """shared helpers for eimer query-batch schedules.
 
-repository convention:
+conventions:
 
-- ,,None'' means query after every batch.
+- `None` means query after every batch.
 - an empty collection means update only, with no query batches.
-- explicit batch numbers are 1-based.
-"""
+- explicit batch numbers are 1-based."""
 
 from __future__ import annotations
 
@@ -63,7 +62,7 @@ def normalize_query_batches(query_batches: str | Collection[int] | None, batch_c
 
 
 def validate_query_batches(query_batches: str | Collection[int] | None, batch_count: int) -> None:
-    """Raise if ,,query_batches'' is not a valid schedule for ,,batch_count''."""
+    """Raise if `query_batches` is not a valid schedule for `batch_count`."""
 
     normalize_query_batches(query_batches, batch_count)
 
@@ -82,9 +81,8 @@ _EVERY_NTH = {"every2nd": 2, "every4th": 4, "every8th": 8}
 
 
 def frequency_batches(frequency: str, batch_count: int) -> frozenset[int] | None:
-    """map the config query_frequency enum to a normalized schedule (None = every batch).
-    the final batch is always included: the cumulative last result is schedule-invariant,
-    so the schedule changes only WHEN compose fires, not what the last batch returns."""
+    """map the config `query_frequency` enum to a normalized schedule (None = every batch).
+    the final batch is always included."""
     _validate_batch_count(batch_count)
     if frequency == "all":
         return None

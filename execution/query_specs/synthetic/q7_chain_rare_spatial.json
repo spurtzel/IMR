@@ -1,13 +1,5 @@
 {
-  "name": "q5_chain_rare_spatial",
-  "suite_metadata": {
-    "pattern_length": 5,
-    "shape": "chain",
-    "independent_selectivity_class": "rare",
-    "dependent_predicate_strength": "canonical",
-    "band_lon": 0.05,
-    "band_lat": 0.02
-  },
+  "name": "q7_chain_rare_spatial",
   "variables": [
     {
       "name": "A",
@@ -33,6 +25,16 @@
       "name": "E",
       "output_prefix": "e",
       "independent_predicate_id": "E_type"
+    },
+    {
+      "name": "F",
+      "output_prefix": "f",
+      "independent_predicate_id": "F_type"
+    },
+    {
+      "name": "G",
+      "output_prefix": "g",
+      "independent_predicate_id": "G_type"
     }
   ],
   "pattern": {
@@ -41,7 +43,9 @@
       "B",
       "C",
       "D",
-      "E"
+      "E",
+      "F",
+      "G"
     ],
     "wildcard": "Z",
     "wildcard_quantifier": "*"
@@ -106,6 +110,30 @@
         "primary_type"
       ],
       "selectivity_key": "E"
+    },
+    {
+      "predicate_id": "F_type",
+      "kind": "independent",
+      "variables": [
+        "F"
+      ],
+      "sql_template": "F.primary_type = 'ASSAULT'",
+      "referenced_columns": [
+        "primary_type"
+      ],
+      "selectivity_key": "F"
+    },
+    {
+      "predicate_id": "G_type",
+      "kind": "independent",
+      "variables": [
+        "G"
+      ],
+      "sql_template": "G.primary_type = 'ROBBERY'",
+      "referenced_columns": [
+        "primary_type"
+      ],
+      "selectivity_key": "G"
     }
   ],
   "dependent_predicates": [
@@ -164,6 +192,34 @@
         "lat"
       ],
       "selectivity_key": "D|E"
+    },
+    {
+      "predicate_id": "E_F_spatial",
+      "kind": "dependent",
+      "variables": [
+        "E",
+        "F"
+      ],
+      "sql_template": "F.lon BETWEEN E.lon - 0.05 AND E.lon + 0.05 AND F.lat BETWEEN E.lat - 0.02 AND E.lat + 0.02",
+      "referenced_columns": [
+        "lon",
+        "lat"
+      ],
+      "selectivity_key": "E|F"
+    },
+    {
+      "predicate_id": "F_G_spatial",
+      "kind": "dependent",
+      "variables": [
+        "F",
+        "G"
+      ],
+      "sql_template": "G.lon BETWEEN F.lon - 0.05 AND F.lon + 0.05 AND G.lat BETWEEN F.lat - 0.02 AND F.lat + 0.02",
+      "referenced_columns": [
+        "lon",
+        "lat"
+      ],
+      "selectivity_key": "F|G"
     }
   ],
   "measures": [
@@ -216,6 +272,26 @@
       "expression": "E.time",
       "alias": "e_time",
       "sql_type": "TIMESTAMP(6)"
+    },
+    {
+      "expression": "F.id",
+      "alias": "f_id",
+      "sql_type": "BIGINT"
+    },
+    {
+      "expression": "F.time",
+      "alias": "f_time",
+      "sql_type": "TIMESTAMP(6)"
+    },
+    {
+      "expression": "G.id",
+      "alias": "g_id",
+      "sql_type": "BIGINT"
+    },
+    {
+      "expression": "G.time",
+      "alias": "g_time",
+      "sql_type": "TIMESTAMP(6)"
     }
   ],
   "result_key_columns": [
@@ -228,7 +304,11 @@
     "d_id",
     "d_time",
     "e_id",
-    "e_time"
+    "e_time",
+    "f_id",
+    "f_time",
+    "g_id",
+    "g_time"
   ],
   "event_schema": [
     {

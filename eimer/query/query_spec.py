@@ -1,4 +1,4 @@
-"""restricted-pattern query specification.
+"""Restricted-pattern query specification.
 
 QuerySpec is a typed description of the restricted model V1 Z* V2 Z* ... Z* Vn; it
 renders to MATCH_RECOGNIZE sql and compiles to a DependencyGraph.
@@ -31,7 +31,7 @@ class VariableSpec:
     name: str
     output_prefix: str
     independent_predicate_id: str
-    quantifier: str = "ONE"  # ONE | PLUS | RELUCTANT_PLUS (single-variable independent Kleene)
+    quantifier: str = "ONE"
 
 
 @dataclass(frozen=True)
@@ -56,9 +56,6 @@ class PatternSpec:
     variables: tuple[str, ...]
     wildcard: str = "Z"
     wildcard_quantifier: str = "*"
-    # optional per-gap quantifiers: entry i is the wildcard quantifier for the gap
-    # between variables[i] and variables[i+1] (len == len(variables) - 1), each greedy
-    # "*" or reluctant "*?". None means every gap uses wildcard_quantifier.
     gap_quantifiers: tuple[str, ...] | None = None
 
 
@@ -92,14 +89,14 @@ class QuerySpec:
 
 
 def _require_mapping(payload: Any, *, context: str) -> Mapping[str, Any]:
-    """assert the payload is a mapping, else raise with ,,context'' in the message."""
+    """Asserts the payload is a mapping, else raises with `context` in the message."""
     if not isinstance(payload, Mapping):
         raise ValueError(f"{context} must be an object")
     return payload
 
 
 def _require_sequence(payload: Mapping[str, Any], key: str) -> tuple[Any, ...]:
-    """fetch a required array-valued field as a tuple, else raise."""
+    """Fetches a required array-valued field as a tuple, else raises."""
     if key not in payload:
         raise ValueError(f"QuerySpec JSON missing required field {key!r}")
     value = payload[key]
@@ -239,7 +236,6 @@ def query_spec_to_dict(spec: QuerySpec) -> dict[str, Any]:
                 "name": variable.name,
                 "output_prefix": variable.output_prefix,
                 "independent_predicate_id": variable.independent_predicate_id,
-                # Emit quantifier only when non-default, keeping default specs compact.
                 **({"quantifier": variable.quantifier} if variable.quantifier != "ONE" else {}),
             }
             for variable in spec.variables
@@ -286,7 +282,6 @@ def query_spec_to_dict(spec: QuerySpec) -> dict[str, Any]:
             "variables": list(pattern.variables),
             "wildcard": pattern.wildcard,
             "wildcard_quantifier": pattern.wildcard_quantifier,
-            # emitted only when set
             **({"gap_quantifiers": list(pattern.gap_quantifiers)}
                if pattern.gap_quantifiers is not None else {}),
         },
@@ -303,31 +298,32 @@ def query_spec_to_dict(spec: QuerySpec) -> dict[str, Any]:
 
 
 def normalized_query_spec_json(spec: QuerySpec) -> str:
-    """canonical (sorted-key, compact) json for hashing and comparison."""
+    """Canonical (sorted-key, compact) json for hashing and comparison."""
     return json.dumps(query_spec_to_dict(spec), sort_keys=True, separators=(",", ":"))
 
 
 def query_spec_fingerprint(spec: QuerySpec) -> str:
-    """stable sha256 fingerprint of a spec's normalized json."""
+    """sha256 fingerprint of a spec's normalized json."""
     return hashlib.sha256(normalized_query_spec_json(spec).encode("utf-8")).hexdigest()
 
 
 def load_query_spec_file(path: str | Path) -> QuerySpec:
-    """load and validate a QuerySpec from a json file."""
+    """Loads and validates a QuerySpec from a json file."""
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     return query_spec_from_dict(payload)
 
 
 def dump_query_spec_file(spec: QuerySpec, path: str | Path) -> None:
-    """write a QuerySpec to a pretty-printed json file, creating parent dirs."""
+    """Writes a QuerySpec to a pretty-printed json file, creating parent dirs."""
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(query_spec_to_dict(spec), indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def validate_query_spec(spec: QuerySpec, *, allow_kleene: bool = False) -> None:
-    """check a spec's internal consistency: unique names, matching pattern, predicate wiring,
-    the kleene boundary, and required result/schema columns. raises ValueError on the first breach."""
+    """Checks a spec's internal consistency: unique names, matching pattern, predicate wiring,
+        the kleene boundary, and required result/schema columns. Raises ValueError on the first breach.
+    """
     variable_names = spec.variable_names
     variable_set = set(variable_names)
     if len(variable_names)!=len(variable_set):
@@ -391,7 +387,6 @@ def validate_query_spec(spec: QuerySpec, *, allow_kleene: bool = False) -> None:
         if unknown:
             raise ValueError(f"Dependent predicate {predicate.predicate_id!r} references unknown variables: {unknown!r}")
 
-    # Per-variable Kleene quantifiers (single-variable independent Kleene).
     valid_quantifiers = {"ONE", "PLUS", "RELUCTANT_PLUS"}
     kleene_variables = set()
     for variable in spec.variables:
@@ -403,8 +398,6 @@ def validate_query_spec(spec: QuerySpec, *, allow_kleene: bool = False) -> None:
             )
         if quantifier != "ONE":
             kleene_variables.add(variable.name)
-    # kleene boundary: a kleene variable carries an INDEPENDENT condition only; no dependent
-    # predicate may reference it (dependent-condition kleene is out of scope).
     for predicate in spec.dependent_predicates:
         touched = [variable for variable in predicate.variables if variable in kleene_variables]
         if touched:
@@ -436,7 +429,7 @@ _QUANTIFIER_SUFFIX = {"ONE": "", "PLUS": "+", "RELUCTANT_PLUS": "+?"}
 
 
 def _format_pattern(pattern: PatternSpec, quantifiers: Mapping[str, str] | None = None) -> str:
-    """render the PATTERN body: variables (with kleene suffixes) interleaved with wildcard gaps."""
+    """Renders the PATTERN body: variables (with kleene suffixes) interleaved with wildcard gaps."""
     quantifiers = quantifiers or {}
     pieces: list[str] = []
     for idx, variable in enumerate(pattern.variables):
@@ -450,13 +443,13 @@ def _format_pattern(pattern: PatternSpec, quantifiers: Mapping[str, str] | None 
 
 
 def _predicate_source_variable(spec: QuerySpec, predicate: QueryPredicateSpec) -> str:
-    """the later of a dependent predicate's two variables owns it in the DEFINE clause."""
+    """The later of a dependent predicate's two variables owns it in the DEFINE clause."""
     positions = {variable: idx for idx, variable in enumerate(spec.variable_names)}
     return max(predicate.variables, key=lambda variable: positions[variable])
 
 
 def query_spec_to_match_recognize_sql(spec: QuerySpec, *, events_table: str = "events") -> str:
-    """render the spec to a MATCH_RECOGNIZE statement over ,,events_table''."""
+    """Renders the spec to a MATCH_RECOGNIZE statement over `events_table`."""
     validate_query_spec(spec)
     predicates_by_variable: dict[str, list[str]] = {variable: [] for variable in spec.variable_names}
     independent_by_id = {predicate.predicate_id: predicate for predicate in spec.independent_predicates}
@@ -507,7 +500,7 @@ def query_spec_to_match_recognize_sql(spec: QuerySpec, *, events_table: str = "e
 
 
 def query_spec_to_dependency_graph(spec: QuerySpec) -> DependencyGraph:
-    """render the spec to sql and compile it to a DependencyGraph."""
+    """Renders the spec to sql and compiles it to a DependencyGraph."""
     result = compile_sql_to_dependency_graph(query_spec_to_match_recognize_sql(spec))
     if not result.ok or result.dependency_graph is None:
         diagnostics = result.diagnostics_to_dict()
@@ -516,12 +509,12 @@ def query_spec_to_dependency_graph(spec: QuerySpec) -> DependencyGraph:
 
 
 def query_spec_result_key_columns(spec: QuerySpec) -> tuple[str, ...]:
-    """the result key columns (validated)."""
+    """The validated result key columns."""
     validate_query_spec(spec)
     return tuple(spec.result_key_columns)
 
 
 def query_spec_result_column_types(spec: QuerySpec) -> dict[str, str]:
-    """map each measure alias to its sql type, defaulting to VARCHAR."""
+    """Maps each measure alias to its sql type, defaulting to VARCHAR."""
     validate_query_spec(spec)
     return {measure.alias: (measure.sql_type or "VARCHAR") for measure in spec.measures}

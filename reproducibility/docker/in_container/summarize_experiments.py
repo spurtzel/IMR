@@ -7,8 +7,8 @@ Prints one row per cell (runtimes, speed-up, memory, matches, selected strategy)
   configuration  the run used the configuration of the paper's runs (kappa, selection rule, bushy composition tree,
                  pinned join order for EIMER, optimizer for the baseline, window stated on the gap variable, ...)
   paper          for cells the paper reports: the same selected strategy and the same number of matches as in the
-                 paper's run (reproducibility/reference/paper_duckdb_esper.json). Runtimes and memory depend on the machine and are
-                 shown next to the paper's values for orientation only.
+                 paper's run (reproducibility/reference/paper_duckdb_esper.json). Runtimes and memory are shown
+                 next to the paper's values.
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ import json
 import sys
 from pathlib import Path
 
-REPRO = Path(__file__).resolve().parents[2]   # the reproducibility directory
+REPRO = Path(__file__).resolve().parents[2]
 REF = json.loads((REPRO / "reference" / "paper_duckdb_esper.json").read_text())
 
 
@@ -55,7 +55,6 @@ def duckdb(out: Path) -> int:
         ck.ok(t["status"] in ("ok", "dnf") and e["status"] in ("ok", "dnf"), f"{c}: an approach ended with an error")
         if both:
             ck.ok(r.get("in_engine_identity") is True, f"{c}: EIMER's result differs from the transpiled query's")
-        # configuration of the paper's runs
         ck.ok(r.get("kappa") == 49.0, f"{c}: kappa {r.get('kappa')} (paper: 49)")
         sel = r.get("selector", {}); ex = r.get("execution", {})
         ck.ok(not sel.get("full_anchor") and sel.get("rule") == "explicit graph", f"{c}: selector {sel}")
@@ -67,7 +66,7 @@ def duckdb(out: Path) -> int:
         nested = (r.get("compose_sql") or {}).get("eimer", {}).get("nested")
         for arm in ("transpiled", "eimer"):
             if m.get(arm, {}).get("status") == "ok":
-                ck.ok(m[arm].get("identity_vs_campaign") is True, f"{c}: the {arm} result of the memory run differs from the runtime run")
+                ck.ok(m[arm].get("identity_vs_runtime") is True, f"{c}: the {arm} result of the memory run differs from the runtime run")
         pr = ref.get(c); same = "-"
         if pr:
             a = ck.ok(r["pick"]["cover"] == pr["pick"], f"{c}: selected strategy {r['pick']['cover']} (paper: {pr['pick']})")
@@ -99,7 +98,7 @@ ARM_LABEL = {"esper_native": "Esper MR", "eimer_esper": "Clique-Grow", "eimer_es
 
 def esper(out: Path) -> int:
     ck = Checks(); rows = []; lines = []
-    for center, root, axis in (("fig8s005", out / "fig8_s005", "N"), ("fig8s005n25k", out / "fig8_s005_n25k", "k")):
+    for center, root, axis in (("n_panel", out / "n_panel", "N"), ("k_panel", out / "k_panel", "k")):
         rt, mem, base = load(root), load(Path(str(root) + "_mem")), load(Path(str(root) + "_jvmbase"))
         ck.ok(bool(rt), f"{center}: no runtime records")
         ref = REF["esper"][center]

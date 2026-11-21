@@ -1,7 +1,7 @@
 """experiment.yaml / environment.yaml schema: defines config shape only.
 
-Scalar values only. Construction is strict: unknown keys are rejected by name. Value legality and
-cross-field rules live in validate.py. JSON loads via stdlib; YAML needs PyYAML.
+Scalar values only. Unknown keys are rejected by name. Value legality and
+cross-field rules are in validate.py. JSON loads via stdlib; YAML needs PyYAML.
 """
 
 from __future__ import annotations
@@ -28,18 +28,14 @@ def _require(section: str, data: dict, key: str) -> Any:
     return data[key]
 
 
-# --------------------------------------------------------------------------- #
-# experiment.yaml
-# --------------------------------------------------------------------------- #
-
 @dataclass(frozen=True)
 class KleeneConfig:
-    """Kleene shape: ,,count'' Kleene variables with ,,quantifier'', each preceded by a
-    ,,gap'' wildcard (greedy Z* or reluctant Z*?)."""
+    """Kleene shape: `count` Kleene variables with `quantifier`, each preceded by a
+    `gap` wildcard (greedy Z* or reluctant Z*?)."""
 
     count: int
-    quantifier: str          # PLUS | RELUCTANT_PLUS
-    gap: str                 # reluctant (Z*?) | greedy (Z*)
+    quantifier: str
+    gap: str
 
     @classmethod
     def from_dict(cls, data: dict) -> "KleeneConfig":
@@ -51,13 +47,13 @@ class KleeneConfig:
 
 @dataclass(frozen=True)
 class QueryConfig:
-    """-> campaign_spec_gen."""
+    """-> spec_gen."""
 
     pattern_length: int
-    topology: str            # chain | star | cycle | clique | ... (validate.py)
+    topology: str
     predicate_class: str = "spatial"
     kleene: KleeneConfig | None = None
-    measures: tuple[str, ...] = ()   # e.g. ("COUNT(K1.id) AS k1_count",); empty = per-var id+time
+    measures: tuple[str, ...] = ()
 
     @classmethod
     def from_dict(cls, data: dict) -> "QueryConfig":
@@ -87,22 +83,18 @@ class BurstConfig:
 
 @dataclass(frozen=True)
 class DataConfig:
-    """-> datagen. ,,stream'' is the batch_sizes form
-    [initial_table_size, batch1, batch2, ...]; total_rows = sum.
-    ,,independent_selectivity'' is a PER-TYPE upper bound on presence (does NOT sum to
-    1; the sum <= 1 constraint and feasibility floor live in validate.py). Its keys ARE
-    the type set."""
+    """-> datagen. `stream` is the batch_sizes form
+        [initial_table_size, batch1, batch2, ...]; total_rows = sum.
+        `independent_selectivity` is a per-type upper bound on presence (the sum <= 1 constraint
+        and feasibility floor are in validate.py). Its keys are the type set.
+    """
 
     stream: tuple[int, ...]
     independent_selectivity: dict[str, float]
-    seed: int | None = None          # None = random; the ACTUAL seed used is recorded
+    seed: int | None = None
     rho: float = 1000.0
     cluster_count: int = 4
     burst: BurstConfig | None = None
-    # optional band geometry override [lon, lat]. None = the canonical half-widths
-    # (0.05, 0.02). Expressed once and derived into BOTH the query band literal and the
-    # datagen BandTarget so the coupling invariant (query hw == generation hw) holds.
-    # Everyday configs should omit it.
     band_half_widths: tuple[float, float] | None = None
 
     @classmethod
@@ -127,17 +119,13 @@ class DataConfig:
 class ExecutionConfig:
     """-> pipeline (neither generator)."""
 
-    selectivity_mode: str = "b_unified"      # b_unified | c: ONLY these two
-    join_order: str = "bushy"                # canonical | dp | bushy
-    selector: str = "clique_grow"            # clique_grow | edge_cover (the sweep's cover selector)
+    selectivity_mode: str = "b_unified"
+    join_order: str = "bushy"
+    selector: str = "clique_grow"
     strategy_set: str | None = None
     caps: dict[str, int] = field(default_factory=dict)
     regime: str = "dependent_predicates_in_on"
-    # query schedule: at which batches the cumulative result is QUERIED.
-    # all = every batch (the default); everyNth (N in {2,4,8}) = every Nth batch + always
-    # the final; last = only the final batch. trino/memory require 'all' (validator).
-    # Mapping: eimer.query.query_schedule.frequency_batches.
-    query_frequency: str = "all"             # all | every2nd | every4th | every8th | last
+    query_frequency: str = "all"
 
     @classmethod
     def from_dict(cls, data: dict) -> "ExecutionConfig":
@@ -154,8 +142,9 @@ class ExecutionConfig:
 
 @dataclass(frozen=True)
 class OutputConfig:
-    """Capture-everything cheap by default; the expensive captures are opt-in flags
-    (with_qep, with_correctness; selectivity_mode 'c' gates the third)."""
+    """The cheap captures are on by default; the expensive captures are opt-in flags
+        (with_qep, with_correctness; selectivity_mode 'c' enables the third).
+    """
 
     with_qep: bool = False
     with_correctness: bool = False
@@ -173,9 +162,6 @@ class ExperimentConfig:
     data: DataConfig
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
-    # band tightness: expressed once, derived at materialization into BOTH the query
-    # band literal AND the datagen band-sigma. None = natural sigma (no calibration
-    # target).
     band_tightness: float | None = None
 
     @classmethod
@@ -190,13 +176,9 @@ class ExperimentConfig:
                    else float(data["band_tightness"]))
 
 
-# --------------------------------------------------------------------------- #
-# environment.yaml
-# --------------------------------------------------------------------------- #
-
 @dataclass(frozen=True)
 class ParallelismConfig:
-    mode: str = "serial"     # the only supported mode
+    mode: str = "serial"
     containers: int = 1
 
     @classmethod
@@ -208,11 +190,11 @@ class ParallelismConfig:
 
 @dataclass(frozen=True)
 class EnvironmentConfig:
-    """,,backend'' is REQUIRED with NO default:
-    a config that does not name its backend fails loud here, before any run.
-    ,,memory'' is only ever an EXPLICITLY named value, never a fallback."""
+    """`backend` is required, with no default; a config that does not name its backend raises an error.
+        `memory` is only used when named explicitly.
+    """
 
-    backend: str             # trino | memory: REQUIRED, no default
+    backend: str
     connection: dict[str, str] = field(default_factory=dict)
     parallelism: ParallelismConfig = field(default_factory=ParallelismConfig)
 
@@ -228,10 +210,6 @@ class EnvironmentConfig:
                    connection={str(k): str(v) for k, v in (data.get("connection") or {}).items()},
                    parallelism=ParallelismConfig.from_dict(data.get("parallelism") or {}))
 
-
-# --------------------------------------------------------------------------- #
-# File loading (JSON stdlib; YAML behind the optional-PyYAML seam)
-# --------------------------------------------------------------------------- #
 
 def load_config_dict(path: Path) -> dict:
     text = Path(path).read_text(encoding="utf-8")

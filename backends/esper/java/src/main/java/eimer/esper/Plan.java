@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 
+/** The plan.json content: variables, the eimer view plan and the native statement. */
 final class Plan {
     public List<String> variables = new ArrayList<>();
     @JsonProperty("key_columns")

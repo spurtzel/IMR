@@ -1,9 +1,8 @@
 """select a sweep plan with clique_grow or edge_cover.
 
 runs one cover selector over the scored workload and writes a rank-1 plan descriptor
-carrying the chosen cover (its view names). the executor rebuilds and runs exactly that
-cover via the --explicit-cover path (execution/cli.py emit-sql).
-"""
+carrying the chosen cover (its view names). the executor runs that cover via the
+--explicit-cover path (execution/cli.py emit-sql)."""
 from __future__ import annotations
 
 import argparse

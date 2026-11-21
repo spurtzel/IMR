@@ -74,7 +74,7 @@ def selectivity_source_rowcount(payload: Mapping[str, Any]) -> int | None:
 
 
 def payload_rho(payload_or_path: Mapping[str, Any] | Path, *, default: float = 1000.0) -> float:
-    """Event-time density from the payload; defaults to the generator's 1-event/ms grid."""
+    """Event-time density from the payload (default 1000 events/s)."""
     payload = load_selectivity_payload(payload_or_path) if isinstance(payload_or_path, Path) else payload_or_path
     value = selectivity_payload_metadata(payload).get("rho")
     return float(value) if value not in (None, "") else default
@@ -98,8 +98,6 @@ def parse_selectivities_payload(payload: Mapping[str, Any], dep_graph) -> Select
                 raise ValueError(f"Unknown dependent selectivity kind {kind!r} for edge {key!r}")
         dependent[ordered] = tuple(components)
 
-    # A dep edge missing from the payload but carrying an implied window gets the
-    # analytic WindowSelectivity (sigma = 2*w*rho/N, w in seconds).
     from eimer.query.temporal_propagation import implied_windows
 
     implied = implied_windows(dep_graph)

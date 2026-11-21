@@ -1,35 +1,32 @@
-"""calibrated byte-size model for a cover's persistent state on trino/iceberg.
+"""Byte-size model for a cover's persistent state on trino/iceberg.
 
-pass ,,peak_state_bytes_trino'' as ,,peak_bytes_fn'' to ,,select_clique_grow_plan'' to
-enforce the storage budget M. parquet is columnar and compressed, so bytes/row are
-calibrated on materialized views rather than derived from the storage format:
+Pass `peak_state_bytes_trino` as `peak_bytes_fn` to `select_clique_grow_plan` to
+enforce the storage budget M:
 
     bytes(view) = n_files * (F0 + FC * n_columns) + rows * SAFETY * sum_col bytes_per_row(col)
 
-views are INSERT-grown per batch and never truncated, so all views are cumulative at the
-final batch with one parquet file per batch. Kleene caches are unpriced; the constants hold
-for Trino with Iceberg and snappy-compressed Parquet.
+All views are cumulative at the final batch with one parquet file per batch. Kleene caches are
+unpriced; the constants are for Trino with Iceberg and snappy-compressed Parquet.
 """
 from __future__ import annotations
 
 from eimer.selection.join_order import _edge_sigma, analytic_node_size
 from eimer.models import make_view
 
-# calibrated constants
-C_ID = 0.939            # bytes/row per BIGINT id column
-C_TS = 1.029            # bytes/row per TIMESTAMP(6) column
-C_DBL = 3.746           # bytes/row per DOUBLE column
-FILE_OVERHEAD_BASE = 46.5      # bytes per parquet file
-FILE_OVERHEAD_PER_COL = 456.0  # + per column (footer/statistics scale with width)
-# safety factor on the total prediction
+C_ID = 0.939
+C_TS = 1.029
+C_DBL = 3.746
+FILE_OVERHEAD_BASE = 46.5
+FILE_OVERHEAD_PER_COL = 456.0
 TOTAL_SAFETY = 1.13
 
 _TYPE_BYTES = {"BIGINT": C_ID, "TIMESTAMP": C_TS, "DOUBLE": C_DBL}
 
 
 def view_columns(varset, dep, *, measures_time: bool = True) -> list[tuple[str, str]]:
-    """schema-min columns the emitter materializes for a conjunctive view: id + ts per
-    variable, lat+lon if the variable is in a spatial-band predicate, time if measured."""
+    """Schema-min columns the emitter materializes for a conjunctive view: id + ts per
+        variable, lat+lon if the variable is in a spatial-band predicate, time if measured.
+    """
     band_vars = set()
     for e in dep.edges:
         band_vars.add(e.var_left)
@@ -47,10 +44,10 @@ def view_columns(varset, dep, *, measures_time: bool = True) -> list[tuple[str, 
 
 
 def _cyclic_card_correction(varset, dep, wl, batch_index: int) -> float:
-    """conservative correction for cyclic views: the c = |E|-(|V|-1) closing edges
-    cannot act as filters, so un-apply the loosest c sigmas (tree-bound cardinality).
-    over-predicts rather than under-predicts, which a hard memory bound needs. acyclic
-    views return 1."""
+    """Correction for cyclic views: the c = |E|-(|V|-1) closing edges
+        cannot act as filters, so the loosest c sigmas are un-applied (tree-bound cardinality).
+        Acyclic views return 1.
+    """
     vs = set(varset)
     edges = [(e.var_left, e.var_right) for e in dep.edges if {e.var_left, e.var_right} <= vs]
     c = len(edges) - (len(vs) - 1)
@@ -64,7 +61,7 @@ def _cyclic_card_correction(varset, dep, wl, batch_index: int) -> float:
 
 
 def view_rows(varset, wl, batch_index: int, dep=None) -> float:
-    """resident rows of a materialized view, with the cyclic correction applied when a dep graph is given."""
+    """Resident rows of a materialized view, with the cyclic correction applied when a dep graph is given."""
     rows = analytic_node_size(make_view(varset), wl, batch_index)
     if dep is not None:
         rows *= _cyclic_card_correction(varset, dep, wl, batch_index)
@@ -72,7 +69,7 @@ def view_rows(varset, wl, batch_index: int, dep=None) -> float:
 
 
 def cache_bytes_trino(varset, dep, wl, batch_index: int, n_batches: int) -> float:
-    """predicted parquet bytes for one materialized view: per-file overhead over n_batches plus rows * bytes/row."""
+    """Predicted parquet bytes for one materialized view: per-file overhead over n_batches plus rows * bytes/row."""
     cols = view_columns(varset, dep)
     row_bytes = sum(_TYPE_BYTES[t] for _c, t in cols)
     rows = view_rows(varset, wl, batch_index, dep)
@@ -80,8 +77,9 @@ def cache_bytes_trino(varset, dep, wl, batch_index: int, n_batches: int) -> floa
 
 
 def peak_state_bytes_trino(cover_sets, dep, wl, *, query_batches=None) -> int:
-    """predicted persistent iceberg state (sum of per-view parquet bytes) at the
-    final batch for this cover. empty cover -> 0."""
+    """Predicted persistent iceberg state (sum of per-view parquet bytes) at the
+        final batch for this cover. Empty cover -> 0.
+    """
     if not cover_sets:
         return 0
     K = len(wl.batch_sizes)
@@ -89,5 +87,5 @@ def peak_state_bytes_trino(cover_sets, dep, wl, *, query_batches=None) -> int:
     all_last = max(dep.variables, key=lambda v: pos[v])
     caches = list(cover_sets)
     if not any(all_last in s for s in caches):
-        caches.append(frozenset([all_last]))       # staged delta-driver singleton
+        caches.append(frozenset([all_last]))
     return int(round(TOTAL_SAFETY * sum(cache_bytes_trino(s, dep, wl, K, K) for s in caches)))

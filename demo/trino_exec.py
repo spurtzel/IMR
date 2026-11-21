@@ -1,21 +1,18 @@
 """Trino runtime layer for the demo experiment drivers.
 
-Loads a synthetic datagen frame into a Trino table and runs the two arms:
+Loads a synthetic datagen frame into a Trino table and runs the two approaches:
   * mr_streaming    -- native MATCH_RECOGNIZE, re-scan of the cumulative window
                        per queried batch (the baseline).
   * eimer_streaming -- an EIMER cover: per-view delta updates plus a dedup'd
-                       compose on queried batches (both TIMED); ingestion into the
-                       staging tables is untimed by convention. The arm body is the
+                       compose on queried batches (both timed); ingestion into the
+                       staging tables is untimed. The approach body is the
                        engine-neutral demo/eimer_arm.py (shared with duckdb_exec).
 
-Measurement discipline pinned per session in ,,connect'': join reordering OFF (the
-cost-model-selected join order runs verbatim), intra-query parallelism OFF, and a
-server-side per-query wall. No index structures exist on any table. Every arm runs
-an untimed warm-up pass (identical statements, result discarded) before the timed
-pass, so no arm pays the engine's cold start.
+`connect` sets join reordering off, intra-query parallelism off, and a
+server-side per-query wall. No index structures exist on any table. Every approach runs
+an untimed warm-up pass (identical statements, result discarded) before the timed pass.
 
-Both arms return full-tuple key sets on the final batch for the multiset identity
-gate (EIMER result == native MATCH_RECOGNIZE).
+Both approaches return full-tuple key sets on the final batch.
 """
 from __future__ import annotations
 
@@ -33,16 +30,12 @@ from trino_client import TrinoClient, TrinoClientError, TrinoConnectionConfig  #
 from eimer.query.query_spec import query_spec_to_match_recognize_sql  # noqa: E402
 from eimer.sql.sql_dialect import SqlDialect  # noqa: E402
 import eimer_arm  # noqa: E402
-from eimer_arm import b_unified_workload, build_cover_plan  # noqa: E402,F401  (re-exported)
+from eimer_arm import b_unified_workload, build_cover_plan  # noqa: E402,F401
 
 EVENT_COLS = ("id", "time", "ts", "primary_type", "etype", "lon", "lat")
-# Loadable column types; ekey (BIGINT equi key, DatagenConfig.equi) is optional and
-# frame-driven: present in the frame -> present in the table.
 _COL_TYPES = {"id": "BIGINT", "time": "TIMESTAMP(6)", "ts": "TIMESTAMP(6)",
               "primary_type": "VARCHAR", "etype": "VARCHAR", "lon": "DOUBLE",
               "lat": "DOUBLE", "ekey": "BIGINT"}
-# Trino error markers that mean "the query hit the wall / blew its budget" -> a
-# feasibility DNF (did-not-finish), not a bug.
 _DNF_TOKENS = ("EXCEEDED_TIME_LIMIT", "exceeded the maximum execution time",
                "query_max_run_time", "EXCEEDED_GLOBAL_MEMORY_LIMIT",
                "EXCEEDED_LOCAL_MEMORY_LIMIT", "Query exceeded",
@@ -51,10 +44,9 @@ _DNF_TOKENS = ("EXCEEDED_TIME_LIMIT", "exceeded the maximum execution time",
 
 def connect(server: str = "localhost:8080", catalog: str = "memory",
             schema: str = "default", user: str = "trino", timeout_s: int = 1800):
-    """Open a Trino client and pin the measurement discipline: per-query wall (T),
-    join reordering OFF, intra-query parallelism OFF. The HTTP read timeout is set
-    ABOVE T so the server-side kill (a DNF) is observed rather than the HTTP socket
-    timing out first."""
+    """Opens a Trino client with a per-query wall (T), join reordering off and
+        intra-query parallelism off.
+    """
     cfg = TrinoConnectionConfig(server=server, catalog=catalog, schema=schema,
                                 user=user, timeout_seconds=float(timeout_s) + 300.0)
     client = TrinoClient(cfg)
@@ -70,8 +62,6 @@ def is_dnf(err) -> bool:
 
 
 def _render_row(t) -> str:
-    # t = (id, time, ts, primary_type, etype, lon, lat[, ekey]); bit-exact doubles
-    # via !r, microsecond timestamps to preserve the tie-free grid.
     tm = t[1].strftime("%Y-%m-%d %H:%M:%S.%f")
     ts = t[2].strftime("%Y-%m-%d %H:%M:%S.%f")
     pe = str(t[3]).replace("'", "''")
@@ -91,9 +81,10 @@ def drop_table(client, table: str) -> None:
 
 
 def load_frame(client, frame, table: str = "events", chunk_chars: int = 700_000) -> int:
-    """CREATE + chunked INSERT the synthetic frame into ,,table''; the column set is
-    frame-driven (the 7 canonical columns, plus ekey when the equi predicate is on).
-    Returns the loaded row count (callers assert it equals len(frame))."""
+    """CREATE + chunked INSERT of the synthetic frame into `table`; the column set is
+        frame-driven (the 7 canonical columns, plus ekey when the equi predicate is on).
+        Returns the loaded row count.
+    """
     cols = [c for c in frame.columns if c in _COL_TYPES]
     drop_table(client, table)
     client.execute(f"CREATE TABLE {table} ("
@@ -114,21 +105,22 @@ def load_frame(client, frame, table: str = "events", chunk_chars: int = 700_000)
 
 
 def mr_streaming(client, spec, table, N, B, qb, key_cols, T, warmup=True):
-    """Native MATCH_RECOGNIZE arm: re-scan the cumulative window id <= (b*N)//B on
-    each queried batch (count(*) forces full evaluation); the final batch pulls the
-    full-tuple keys for the identity gate. The wall T applies PER RE-SCAN. With
+    """Native MATCH_RECOGNIZE approach: re-scans the cumulative window id <= (b*N)//B on
+    each queried batch; the final batch pulls the
+    full-tuple keys for the identity check. The wall T applies per re-scan. With
     warmup (the default), the whole workload first runs once untimed. Returns
     (total_ms, final_count, final_tuple_set, meta), or (None, None, None, meta) on a
-    wall/memory DNF."""
+    wall/memory DNF.
+    """
     if warmup:
         warm = mr_streaming(client, spec, table, N, B, qb, key_cols, T, warmup=False)
-        if warm[0] is None:  # a warm-up DNF: the timed pass would DNF too
+        if warm[0] is None:
             return warm
         return mr_streaming(client, spec, table, N, B, qb, key_cols, T, warmup=False)
     tot = 0.0
     final = None
     tuples = None
-    per_scan = []  # (window_rows, ms) per re-scan
+    per_scan = []
     qbs = sorted(qb)
     keysel = ", ".join(c.lower() for c in key_cols)
     client.execute(f"SET SESSION query_max_run_time = '{int(T)}s'")
@@ -170,8 +162,8 @@ class TrinoEngine(eimer_arm.Engine):
 
 def eimer_streaming(client, dep, toks, all_vars, wl, spec, table, N, B, qb, key_cols, T,
                     measure_state: bool = False, warmup: bool = True):
-    """the shared EIMER arm (demo/eimer_arm.py) on this Trino client: full per-batch
-    protocol, ingestion untimed, delta updates + dedup'd compose timed, full-tuple keys
-    on the final batch; measure_state snapshots the resident state untimed."""
+    """The shared EIMER approach (`demo/eimer_arm.py`) on this Trino client; `measure_state` snapshots the
+    resident state untimed.
+    """
     return eimer_arm.eimer_streaming(TrinoEngine(client), dep, toks, all_vars, wl, spec, table,
                                      N, B, qb, key_cols, T, measure_state=measure_state, warmup=warmup)

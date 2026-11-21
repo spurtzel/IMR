@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-# ONE-COMMAND reproduction:  ./docker/run_demo.sh
-#
-# Builds the pinned Trino-481 image + the pipeline image, starts Trino, waits until
-# it is ACTIVE, runs the demo suite in the pipeline container, prints the summary,
-# and tears everything down. Exit code 0 <=> every gate passed.
-#
-# Knobs (env):
+# Demo: builds the Trino-481 and pipeline images, starts Trino, runs the demo suite in the
+# pipeline container, prints the summary, and removes the containers.
+# Usage: ./docker/run_demo.sh
+# Exit code 0 iff every check passed. Results and logs: docker/out/
+# Env:
 #   TRINO_MEM=6g        memory limit for the Trino container
 #   KEEP_UP=1           leave the Trino container running afterwards
-#   TRINO_BASE_IMAGE=trinodb/trino:481   the pinned base image
+#   TRINO_BASE_IMAGE=trinodb/trino:481   base image
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -51,7 +49,6 @@ done
 echo "== [3/4] run the demo suite"
 mkdir -p docker/out
 set +e
-# --user keeps the artifacts in docker/out owned by the invoking host user
 docker run --rm --network "$NET" \
   --user "$(id -u):$(id -g)" \
   -v "$PWD/docker/out:/eimer/docker/out" \

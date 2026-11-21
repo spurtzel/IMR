@@ -2,13 +2,13 @@
 """EIMER's selected plan rendered as an Esper EPL module.
 
 Two statement kinds: per maintained view a continuous
-,,insert into V_<vars> select … from DriveEvent as y unidirectional, <sources> where …'' (the batch's rows of the
-view's last variable drive the update; history singletons read ,,Hist'', prefix views read their window; the
-batch-window prefix prune bounds every non-batch source), and one ,,select … from ComposeTrigger as t
-unidirectional, <nodes> where …'' (the compose over the cover, one trigger per batch). The per-start selection
-(SQL's ROW_NUMBER = 1) is not EPL: the Java program (java/) applies it to the compose's candidate rows, exactly as
-to Esper's native ,,all matches'' output. The native arm's statement is rendered here as well from the same
-predicates. Columns are prefixed ,,<Var>_<col>'' as in EIMER's SQL views; timestamps are long milliseconds.
+`insert into V_<vars> select ... from DriveEvent as y unidirectional, <sources> where ...` (the batch's rows of the
+view's last variable drive the update; history singletons read `Hist`, prefix views read their window; the
+batch-window prefix prune bounds every non-batch source), and one `select ... from ComposeTrigger as t
+unidirectional, <nodes> where ...` (the compose over the cover, one trigger per batch). The per-start selection
+(SQL's ROW_NUMBER = 1) is applied by the Java program (`java/`) to the compose's candidate rows. The native
+approach's statement is rendered here from the same predicates. Columns are prefixed `<Var>_<col>` as in EIMER's
+SQL views; timestamps are long milliseconds.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Sequence, Tuple
 
-EIMER_REPO = Path(os.environ.get("EIMER_REPO", Path(__file__).resolve().parents[2]))   # the repository root
+EIMER_REPO = Path(os.environ.get("EIMER_REPO", Path(__file__).resolve().parents[2]))
 for _p in (str(EIMER_REPO), str(EIMER_REPO / "execution"), str(EIMER_REPO / "demo")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -38,19 +38,18 @@ def _ms(bound: str, unit: str) -> str:
 
 
 def render_condition(text: str, col, positions: Dict[str, int], form: str = "diff") -> str:
-    """one SQL predicate of the dependency graph as EPL. ,,col(var, column)'' renders a variable's column in the
-    statement at hand. Window forms become a millisecond difference in pattern order (,,form="diff"'',
-    ,,later.ts - earlier.ts <= W'') or, with ,,form="range"'', the same bound with the later timestamp alone on the
-    left (,,later.ts <= earlier.ts + W'': a property compared with an expression of the other stream, which Esper's
-    join planner can serve from a sorted index; the difference form is a post-filter). Every other predicate
-    (bands as BETWEEN, equalities, comparisons) keeps its SQL surface, which EPL accepts, with the qualified
-    references re-rendered."""
+    """One SQL predicate of the dependency graph as EPL. `col(var, column)` renders a variable's column in the
+        statement at hand. Window forms become a millisecond difference in pattern order (`form="diff"`,
+        `later.ts - earlier.ts <= W`) or, with `form="range"`, `later.ts <= earlier.ts + W`. Every other
+        predicate (bands as BETWEEN, equalities, comparisons) keeps its SQL surface with the qualified
+        references re-rendered.
+    """
     assert form in ("diff", "range", "range_both"), form
 
     def window(later, earlier, bound):
         if form == "range":
             return f"{col(later, 'ts')} <= {col(earlier, 'ts')} + {bound}"
-        if form == "range_both":   # the bound stated from both sides, so either stream can be the looked-up one
+        if form == "range_both":
             return f"{col(later, 'ts')} <= {col(earlier, 'ts')} + {bound} and {col(earlier, 'ts')} >= {col(later, 'ts')} - {bound}"
         return f"{col(later, 'ts')} - {col(earlier, 'ts')} <= {bound}"
     m = _ABS_DATE_DIFF.search(text)
@@ -60,7 +59,6 @@ def render_condition(text: str, col, positions: Dict[str, int], form: str = "dif
         return window(later, earlier, _ms(m.group('bound'), m.group('unit')))
     m = _INTERVAL.search(text)
     if m and text.strip() == m.group(0):
-        # vl.ts <= vr.ts + W  <=>  ts_vl - ts_vr <= W
         return window(m.group('vl'), m.group('vr'), _ms(m.group('bound'), m.group('unit')))
     if "date_diff" in text.lower() or "interval" in text.lower():
         raise ValueError(f"unsupported temporal predicate form for EPL: {text!r}")
@@ -80,8 +78,9 @@ def _leaves(tree) -> list:
 
 
 def _linearize(tree, driver) -> list:
-    """the source tree as a driver-first chain: at every internal node the subtree holding the driver comes first, the
-    other subtree follows in its own order (a right-/left-deep tree is reproduced exactly; a bushy tree is flattened)."""
+    """The source tree as a driver-first chain: at every internal node the subtree holding the driver comes first, the
+        other subtree follows in its own order.
+    """
     if tree is None:
         return []
     if tree.node is not None:
@@ -93,11 +92,11 @@ def _linearize(tree, driver) -> list:
 
 def _chain_update(target, last_var, last_source, others, tree, tv, edges, bounds, vcols, types, positions, view_name, name, upd,
                   cform, sfilter) -> list:
-    """the view's update as a chain of two-way unidirectional joins (see render_plan: update_form="chain")."""
+    """The view's update as a chain of two-way unidirectional joins (see `render_plan`, `update_form="chain"`)."""
     order = [s for s in _linearize(tree, last_source) if s != last_source] if tree is not None else others
     assert sorted(map(sorted, order)) == sorted(map(sorted, others)), (order, others)
     lines = []
-    have = {last_var}                      # variables carried by the stream so far (as prefixed columns)
+    have = {last_var}
     stream = "DriveEvent as y unidirectional"
     ystream = True
     for i, s in enumerate(order):
@@ -144,12 +143,13 @@ def _chain_update(target, last_var, last_source, others, tree, tv, edges, bounds
 
 
 def render_plan(dep, toks: Sequence[str], o, nodes, *, w_ms: int, types: Dict[str, str], columns: Dict[str, str],
-                prune: bool = True, native_form: str = "paper", eimer_render: str = "diff", update_form: str = "single") -> dict:
-    """the plan.json content for the Java program. ,,o'', ,,nodes'' from eimer_arm.build_cover_plan.
-    native_form: "paper" = the query as stated (the spec's declared predicates only, the wildcard gap
-    unbounded: ,,Z'' undefined = any row); "bounded" = every propagated condition in the DEFINEs
-    and the gap bounded by the window (,,Z as Z.ts - first.ts <= W''; identical result)."""
-    assert native_form in ("paper", "bounded"), native_form
+                prune: bool = True, native_form: str = "stated", eimer_render: str = "diff", update_form: str = "single") -> dict:
+    """The plan.json content for the Java program. `o`, `nodes` from `eimer_arm.build_cover_plan`.
+        native_form: "stated" = the query as stated (the spec's declared predicates only, the wildcard gap
+        unbounded); "bounded" = every propagated condition in the DEFINEs
+        and the gap bounded by the window (`Z as Z.ts - first.ts <= W`).
+    """
+    assert native_form in ("stated", "bounded"), native_form
     assert eimer_render in ("diff", "range", "range_both", "range_both_filter"), eimer_render
     assert update_form in ("single", "chain"), update_form
     cform = {"diff": "diff", "range": "range", "range_both": "range_both", "range_both_filter": "range_both"}[eimer_render]
@@ -157,9 +157,8 @@ def render_plan(dep, toks: Sequence[str], o, nodes, *, w_ms: int, types: Dict[st
     positions = dep.positions
     variables = _var_order(dep.variables, positions)
     up, cp = o.update_plans[0], o.composition_plans[0]
-    for v in variables:  # the EIMER arm filters by ,,types''; it must be exactly the spec's independent predicate
+    for v in variables:
         assert dep.independent_conditions.get(v) == [f"{v}.primary_type = '{types[v]}'"], (v, dep.independent_conditions.get(v), types)
-    # schema-minimal views (as EIMER's SQL views): keys plus the columns a dependent condition references
     used_cols = {v: {"id", "ts"} for v in variables}
     for e in dep.edges:
         for c in e.dependent_conditions:
@@ -168,7 +167,7 @@ def render_plan(dep, toks: Sequence[str], o, nodes, *, w_ms: int, types: Dict[st
                     used_cols[q.group(1)].add(q.group(2))
     vcols = {v: {c: t for c, t in columns.items() if c in used_cols[v]} for v in variables}
     bounds = implied_windows(dep, conservative=True) if prune else {}
-    indep = dep.independent_conditions  # var -> [sql]
+    indep = dep.independent_conditions
     edges = [(e.var_left, e.var_right, list(e.dependent_conditions)) for e in dep.edges]
     view_name = lambda v: "V_" + "_".join(_var_order(v, positions))
     lines: List[str] = [
@@ -181,13 +180,12 @@ def render_plan(dep, toks: Sequence[str], o, nodes, *, w_ms: int, types: Dict[st
     views = []
     for target in up.topological_order:
         if len(target) < 2:
-            continue  # singleton views are read from Hist by type; nothing to maintain
+            continue
         tv = _var_order(target, positions)
         last_source = up.last_variable_source[target]
         assert len(last_source) == 1, f"EPL update requires a singleton last-variable source, got {sorted(last_source)}"
         last_var = next(iter(last_source))
         sources = sorted(up.effective_sources[target], key=lambda s: (len(s), _var_order(s, positions)))
-        # alias + column renderer per variable
         alias_of: Dict[str, str] = {}
         prefixed: Dict[str, bool] = {}
         from_parts = ["DriveEvent as y unidirectional"]
@@ -211,7 +209,6 @@ def render_plan(dep, toks: Sequence[str], o, nodes, *, w_ms: int, types: Dict[st
 
         def col(v, c, _a=alias_of, _p=prefixed):
             return f"{_a[v]}.{v}_{c}" if _p[v] else f"{_a[v]}.{c}"
-        # pattern order inside the view, every internal dependent condition, the prune on non-batch sources
         for a_, b_ in zip(tv, tv[1:]):
             where.append(f"{col(a_, 'ts')} < {col(b_, 'ts')}")
         for l, r, conds in edges:
@@ -235,11 +232,6 @@ def render_plan(dep, toks: Sequence[str], o, nodes, *, w_ms: int, types: Dict[st
                   f"@name('{upd}') insert into {name} select {proj} from {', '.join(from_parts)} where {' and '.join(where)};"]
         views.append({"name": name, "vars": tv, "update_statement": upd, "update_form": "single"})
 
-    # the compose as EIMER orders it: a chain of two-way joins in the plan's join order. the first step
-    # scans the root node once (driven by the trigger), every later step is driven by the previous step's
-    # output stream (unidirectional) and looks the next node up by the shared variables' ids, so Esper's
-    # planner never crosses two nodes without a key.
-    # singleton nodes read Hist by type. predicates are applied at the first step where their variables exist.
     order: List = []
     visited = set()
     if cp.join_order:
@@ -264,12 +256,12 @@ def render_plan(dep, toks: Sequence[str], o, nodes, *, w_ms: int, types: Dict[st
     def node_col(n, a, v, c):
         return f"{a}.{v}_{c}" if len(n) > 1 else f"{a}.{c}"
 
-    applied = set()   # dependent condition texts already enforced by a node (internal) or an earlier step
+    applied = set()
     for n in nodes:
         for l, r, conds in edges:
             if l in n and r in n:
                 applied.update(conds)
-    have: Dict[str, Tuple[str, bool]] = {}  # variable -> (expression prefix alias, prefixed?) on the LEFT side
+    have: Dict[str, Tuple[str, bool]] = {}
     stream = None
     step_names = []
     for i, n in enumerate(order):
@@ -287,7 +279,7 @@ def render_plan(dep, toks: Sequence[str], o, nodes, *, w_ms: int, types: Dict[st
         def ccol(v, c, _n=n, _a=a):
             return f"l.{v}_{c}" if v in have else node_col(_n, _a, v, c)
         for v in _var_order(n, positions):
-            if v in have:  # shared variable: equal ids
+            if v in have:
                 where.append(f"{node_col(n, a, v, 'id')} = l.{v}_id")
         now = set(have) | set(n)
         for x, y in zip(variables, variables[1:]):
@@ -312,10 +304,6 @@ def render_plan(dep, toks: Sequence[str], o, nodes, *, w_ms: int, types: Dict[st
             have.setdefault(v, (a, len(n) > 1))
     keys = [f"{v}_id" for v in variables]
 
-    # the native arm. "paper": the spec's declared predicates per variable (source_variable set), nothing the
-    # compiler propagated, no gap bound. "bounded": every dependent condition of the graph,
-    # the propagated windows included (implied by the query, identical result), and the gap bounded by the
-    # window, so the NFA drops partial matches as early as EIMER's views do.
     declared = [(e.var_left, e.var_right, [p.text for p in e.dependent_predicates if native_form == "bounded" or p.source_variable])
                 for e in dep.edges]
     defs = []
@@ -341,7 +329,7 @@ def render_plan(dep, toks: Sequence[str], o, nodes, *, w_ms: int, types: Dict[st
             "native": {"module": "\n".join(native), "statement": "mr", "form": native_form}}
 
 
-if __name__ == "__main__":  # render a cover of a spec for a look: epl_emitter.py <spec.json> "A_B|A_C" <w_ms> [text]
+if __name__ == "__main__":
     import common, eimer_arm
     from eimer.query.query_spec import load_query_spec_file, query_spec_to_dependency_graph
     spec = load_query_spec_file(sys.argv[1]); dep = query_spec_to_dependency_graph(spec)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # All experiments, one after the other:  bash reproducibility/run_all.sh
-#   SCALE=paper bash reproducibility/run_all.sh                the parameters of our runs (days of compute)
+#   SCALE=paper bash reproducibility/run_all.sh                the paper's parameters
 #   ONLY="duckdb trino_fig9" bash reproducibility/run_all.sh   only these experiments (ids: --list)
 # The default is the small configuration of every experiment. Results go to reproducibility/out/<experiment>/,
 # this script's log to reproducibility/out/run_all.log. The exit code is 0 if every experiment passed all its checks.
@@ -12,7 +12,6 @@ OUT=reproducibility/out
 die() { echo "ERROR: $*" >&2; exit 2; }
 case "$SCALE" in small|paper) ;; *) die "SCALE: small or paper" ;; esac
 
-# id | launcher (in the order of the paper's figures)
 JOBS=(
   "trino_fig8|run_trino_fig8.sh"
   "duckdb|run_duckdb.sh"
@@ -40,7 +39,7 @@ done
 mkdir -p "$OUT"
 log() { echo "$(date '+%F %T') $*" | tee -a "$OUT/run_all.log"; }
 log "== run_all: SCALE=$SCALE${ONLY:+, only: $ONLY}"
-if [ "${SKIP_BUILD:-0}" != 1 ]; then   # build the two images once; every launcher then reuses them
+if [ "${SKIP_BUILD:-0}" != 1 ]; then
   log "build the images (log: $OUT/build.log)"
   read -r -a DK <<< "$DOCKER"
   "${DK[@]}" build -t eimer-trino --build-arg TRINO_HEAP_GB="${TRINO_HEAP_GB:-8}" -f reproducibility/docker/Dockerfile.trino . > "$OUT/build.log" 2>&1 || die "image build failed (see $OUT/build.log)"

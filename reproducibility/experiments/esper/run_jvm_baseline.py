@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""JVM baseline per cell: the Esper jar with ,,--arm none'' loads the cell's data set exactly as every timed arm does and
-exits; measured like the arms (GNU time %M = peak RSS, -Xlog:gc = live heap after each collection). The per-arm working
-memory of the figure = the arm's peak live heap minus this baseline ("peak above the loaded table", as for DuckDB).
+"""JVM baseline per cell: the Esper jar with `--arm none` loads the cell's data set and exits; measured with GNU time
+(%M = peak RSS) and -Xlog:gc (live heap after each collection). The per-approach working memory of the figure is the
+approach's peak live heap minus this baseline.
 Reads the cell directories of a finished memory run (data.csv + plan_pick.json).
 
   run_jvm_baseline.py --cells-from <memory run> --out <dir> [--only a,b]
@@ -61,7 +61,7 @@ def main() -> None:
             t0 = time.time(); p = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
             r = json.loads(o.read_text()) if o.exists() else {"status": "error", "notes": p.stderr[-800:]}
             r.update(parse_gc(gc)); r["wall_clock_s"] = round(time.time() - t0, 1); r["rc"] = p.returncode
-            r["peak_live_heap_mb"] = round(max(r.get("peak_live_heap_sampled_mb") or 0.0, r.get("final_live_heap_mb") or 0.0), 1)   # the data set's live size: forced GC with the rows held
+            r["peak_live_heap_mb"] = round(max(r.get("peak_live_heap_sampled_mb") or 0.0, r.get("final_live_heap_mb") or 0.0), 1)
             r["peak_rss_mb"] = round(int(rss.read_text().strip().splitlines()[-1]) / 1024.0, 1) if rss.exists() else None
             runs.append(r)
         ok = [r for r in runs if r.get("status") == "ok" and r.get("peak_rss_mb")]

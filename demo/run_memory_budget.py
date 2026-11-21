@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """Demo: the storage budget M on a small cell.
 
-Two layers:
+Two parts:
 
-1. Engine-free descent: sweep the budget M from above the unconstrained pick's
-   predicted peak down to 0. At each step select_clique_grow_plan runs under
-   max_storage_bytes=M, and the distinct plan sequence with its predicted peaks and
+1. Engine-free descent: sweep the budget M from the unconstrained pick's predicted
+   peak down to 0. At each step select_clique_grow_plan runs under
+   max_storage_bytes=M; the distinct plan sequence with its predicted peaks and
    repair drops is printed and recorded.
 
-2. Live verification on Trino: each distinct plan is executed with the full
-   per-batch streaming protocol on the loaded table, measuring resident state.
-   Gates:
+2. Live verification on Trino: each distinct plan is executed with the per-batch
+   streaming protocol on the loaded table, measuring resident state. Checks:
      (a) predicted peak <= M at every step;
-     (b) every budget plan yields the identical final result count (the budget
-         changes maintained state, never answers);
+     (b) every budget plan yields the same final result count;
      (c) measured resident state shrinks monotonically along the descent.
    With --catalog iceberg the measured Parquet bytes per cache table are also
    compared against the predicted peak.
@@ -41,12 +39,11 @@ def _cover_tokens(cover_views, positions) -> list[str]:
 
 
 def descend(dep, wl, qb):
-    """Sweep M downward through the distinct-pick breakpoints: start at M=inf
-    (unconstrained pick), then repeatedly set M just below the current pick's
-    predicted peak. Terminates at the empty cover (predicted peak 0). Returns the
-    list of steps [{m_max, cover, predicted_peak_bytes, drops, total_cost}]."""
+    """Sweep M downward through the distinct-pick breakpoints, from M=inf (unconstrained pick) to the
+    empty cover (predicted peak 0). Returns a list of steps
+    `[{m_max, cover, predicted_peak_bytes, drops, total_cost}]`."""
     steps = []
-    m = None  # None == M=inf for the first step
+    m = None
     while True:
         res = select_clique_grow_plan(dep, wl, query_batches=qb,
                                       max_storage_bytes=(float("inf") if m is None else m),
@@ -63,7 +60,7 @@ def descend(dep, wl, qb):
         peak = cert["predicted_peak_bytes"]
         if peak <= 0:
             break
-        m = peak - 1  # the next breakpoint: force a strictly smaller plan
+        m = peak - 1
     return steps
 
 
@@ -92,7 +89,6 @@ def main() -> int:
     qb = frozenset(range(1, a.batches + 1))
     key_cols = [f"{v}_id" for v in sorted(dep.variables, key=lambda v: dep.positions[v])]
 
-    # --- layer 1: engine-free descent ---
     steps = descend(dep, wl, qb)
     print(f"cell: {a.topology} k={a.k} N={a.n} sigma={a.sigma} B={a.batches}")
     print(f"budget descent (M sweep, {len(steps)} distinct plans):")
@@ -113,7 +109,6 @@ def main() -> int:
         print(f"engine-free descent recorded -> {out / 'descent.json'}")
         return 0
 
-    # --- layer 2: live compliance ---
     frame = common.generate_frame(a.n, a.sigma, seed=a.seed)
     client = trino_exec.connect(server=a.server, catalog=a.catalog, schema=a.schema,
                                 user=a.user, timeout_s=a.timeout)
@@ -155,7 +150,6 @@ def main() -> int:
         live.append(dict(cover=s["cover"], total_ms=ms, final_count=n,
                          measured_peak_rows=peak_rows, state=state))
 
-    # --- hard gates ---
     gate_a = all(s["m_bytes"] == "inf" or s["predicted_peak_bytes"] <= s["m_bytes"]
                  for s in steps)
     finals = [l["final_count"] for l in live if l.get("final_count") is not None]

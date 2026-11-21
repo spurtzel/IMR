@@ -13,8 +13,6 @@
 | Event types | eight, each at 5 % of the rows |
 | Query schedule | after every batch |
 
-Native MR finishes up to N = 10,000 (5.8x to 44x slower than EIMER) and GDYN up to N = 50,000 (3.0x to 5.7x slower); EIMER takes
-5.4 s to 1,967 s. Over k, native MR is 15x to 20x slower than EIMER, GDYN 3.3x to 27x, and GDYN does not finish at k = 8.
-Hollow markers: the approach did not finish.
-
 ![Fig. 8a](trino_fig8_N_k.png)
+
+Left: over the table size N; right: over the pattern length k. Hollow markers: the approach did not finish.

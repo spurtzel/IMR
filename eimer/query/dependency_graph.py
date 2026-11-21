@@ -151,8 +151,6 @@ def build_dependency_graph(ir: NormalizedIR) -> DependencyGraph:
         warnings=[],
         measures=tuple(ir.measures),
     )
-    # propagate implied pairwise windows from the explicit ones (identity for window-less queries;
-    # kill-switch EIMER_DISABLE_WINDOW_PROPAGATION=1). deferred import keeps the module graph acyclic.
     from eimer.query.temporal_propagation import propagate_default
 
     return propagate_default(graph)

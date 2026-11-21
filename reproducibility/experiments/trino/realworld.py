@@ -5,13 +5,12 @@ real-world tables (NYC taxi trips, Chicago crimes, e-commerce events; five queri
 Per query, on the first N rows of the table (paper: N = 100,000) in batches of 200 rows, queried after every batch:
   mr      native MATCH_RECOGNIZE over the accumulated table, once per batch, with the query's time window also stated on
           the gap variable (taxi Q2 has no time condition and runs as stated)
-  eimer   EIMER in the delta form: the views without the pattern's last variable
-          are kept and updated per batch; of the view with the last variable only the batch's delta is built; the
-          composed query joins it with the other views and appends the matches that complete in the batch; a final
-          dedup leaves one row per match (trino_lib.eimer_delta_streaming)
+  eimer   EIMER in the delta form: the views without the pattern's last variable are kept and updated per batch; of
+          the view with the last variable only the batch's delta is built; the composed query joins it with the
+          other views and appends the matches that complete in the batch; a final dedup leaves one row per match
+          (trino_lib.eimer_delta_streaming)
   Two queries have a Kleene variable (taxi Q2: B+ Z* C; e-commerce Q4: A Z*? B+ Z* C). Their Kleene view is maintained
-  incrementally (the stitch, as in the paper's runs); a second EIMER arm, eimer_rescan, maintains it by the per-batch
-  rescan and is recorded for comparison.
+  incrementally (the stitch); eimer_rescan maintains it by the per-batch rescan.
 Each approach has a limit per statement and a limit for its total; past it, its time is a lower bound.
 
 Scale and limits (environment):
@@ -36,7 +35,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import trino_lib as tl  # noqa: E402  (wires the repository onto sys.path)
+import trino_lib as tl  # noqa: E402
 import realworld_reference as RR  # noqa: E402
 import pandas as pd  # noqa: E402
 from trino_client import TrinoClientError  # noqa: E402
@@ -51,7 +50,7 @@ DATA = tl.REPRO / "data" / "realworld"
 SPECS = DATA / "specs"
 REFERENCE = json.loads((tl.REPRO / "reference" / "paper_trino.json").read_text()).get("realworld", {})
 BACKEND = backend_for(SqlDialect.TRINO)
-ORDER = ("taxi", "chicago", "ecommerce")   # the order of the paper's figure
+ORDER = ("taxi", "chicago", "ecommerce")
 PAPER_N, PAPER_BATCH, CARVE_ROWS = 100_000, 200, 100_000
 
 DATASETS = [d for d in os.environ.get("EIMER_REPRO_RW_DATASETS", ",".join(ORDER)).replace(" ", "").split(",") if d]
@@ -86,7 +85,7 @@ _FRAMES: dict = {}
 
 
 def frame(dataset: str) -> pd.DataFrame:
-    """the shipped table (its file checked against the recorded SHA-256), rows in id order 1 .. 100,000."""
+    """the shipped table."""
     if dataset not in _FRAMES:
         man = json.loads((DATA / "manifest.json").read_text())[dataset]
         path = DATA / man["file"]
@@ -98,7 +97,7 @@ def frame(dataset: str) -> pd.DataFrame:
 
 
 def rows_of(dataset: str, lo: int, n: int) -> pd.DataFrame:
-    """rows lo .. lo + n - 1 of the table with ids renumbered 1 .. n (the arms cut batches by id; the order is kept)."""
+    """rows lo .. lo + n - 1 with ids renumbered."""
     df = frame(dataset).iloc[lo - 1:lo - 1 + n].reset_index(drop=True).copy()
     assert len(df) == n
     df["id"] = range(1, n + 1)
@@ -120,7 +119,7 @@ def ensure_table(client, dataset: str, lo: int, n: int) -> str:
 
 
 def select(dep, wl, batches: int) -> list:
-    """clique-grow's pick; with a Kleene variable every variable the pick leaves out gets its own view."""
+    """clique-grow's pick."""
     pos = dep.positions
     toks = tl.toks_of(select_clique_grow_plan(dep, wl, query_batches=frozenset(range(1, batches + 1)), kappa=BACKEND.kappa).compose, pos)
     if any(q in ("PLUS", "RELUCTANT_PLUS") for q in dep.quantifiers.values()):
@@ -145,7 +144,7 @@ def run_cell(c: dict, out_root: Path) -> dict:
     vs = sorted(dep.variables, key=lambda v: pos[v])
     all_vars = set(dep.variables)
     kleene_vars = [v for v in vs if dep.quantifiers.get(v) in ("PLUS", "RELUCTANT_PLUS")]
-    key_cols = [m.alias for m in spec.measures if (m.sql_type or "").upper() == "BIGINT"]   # ids, and the count of a Kleene run
+    key_cols = [m.alias for m in spec.measures if (m.sql_type or "").upper() == "BIGINT"]
     ref = REFERENCE[f"{ds}_Q{qi}"]
     bounded = tl.gap_bound(spec) is not None
     pattern = next(ln.strip() for ln in query_spec_to_match_recognize_sql(spec, events_table="events").splitlines() if ln.strip().startswith("PATTERN"))
@@ -164,7 +163,7 @@ def run_cell(c: dict, out_root: Path) -> dict:
     try:
         wl_live, payload_live = tl.estimated_workload(client, dep, table, n, B, BACKEND.window_rule)
         pick_live = select(dep, wl_live, B)
-    except Exception as e:  # noqa: BLE001  (an estimate the estimator cannot form on this table)
+    except Exception as e:  # noqa
         payload_live, pick_live = dict(error=f"{type(e).__name__}: {str(e)[:200]}"), None
     selection = dict(executed="the paper's pick with the paper's estimates", pick=toks, algorithm="clique-grow", kappa=BACKEND.kappa,
                      selector_on_paper_estimates=pick_paper_estimates, selector_reproduces_paper_pick=(pick_paper_estimates == sorted(toks)),
@@ -192,7 +191,6 @@ def run_cell(c: dict, out_root: Path) -> dict:
         return tl.eimer_delta_streaming(client, dep, ptoks, all_vars, wl_, tab, nn, bb, key_cols, T, total_wall_s=total,
                                         kleene=("stitch" if stitch else "rescan"), measure_storage=(total is not None))
 
-    # ---- the window: a few hundred to a few thousand rows on which native MR finishes
     lo, ng = ref["gate_window"]
     assert ng % batch == 0, "the window is a multiple of the batch size"
     Bg = ng // batch
@@ -212,7 +210,6 @@ def run_cell(c: dict, out_root: Path) -> dict:
     rec["window"] = win
     print(f"   window (rows {lo}-{lo + ng - 1}, {Bg} batches): {win}", flush=True)
 
-    # ---- the full run. EIMER first: its result is the reference of the comparisons
     rec["eimer"], e_t = eimer(table, n, B, wl, total=TOT)
     x = rec["eimer"]
     print(f"   eimer        : {x['status']} total={x.get('total_ms')} ms matches={x.get('final_count')} "

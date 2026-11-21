@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The selection-time experiment (Section 7.3): the time clique-grow and the edge cover need to select a strategy, over
 # the pattern length k for four topologies. No engine is involved.
-# Runs INSIDE the experiments container (reproducibility/run_selection_time.sh does that), or on a host with the pinned
+# Runs inside the experiments container (reproducibility/run_selection_time.sh does that), or on a host with the pinned
 # Python packages. Everything is written under $OUT (default reproducibility/out/selection_time).
 # Stages: selection_time.py (records, summary and checks), plot_selection_time.py (the figure).
 # Parameters come from the environment (reproducibility/README.md).

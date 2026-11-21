@@ -1,10 +1,5 @@
 {
  "name": "chicago_Q1",
- "suite_metadata": {
-  "pattern_length": 3,
-  "shape": "chain",
-  "doc": "Spatial-temporal escalation of property-crime severity in a hotspot within a week."
- },
  "variables": [
   {
    "name": "A",

@@ -17,13 +17,13 @@ query adds the window last.ts <= first.ts + 1 s. Three parts:
       uniform table of the same size
       paper: N = 25k (125 batches); reported in the text, not plotted
 
-Arms (same Iceberg table, one after the other, single-threaded, join reordering off, no warm-up of the approaches, ingestion untimed):
+Approaches (same Iceberg table, single-threaded, join reordering off, ingestion untimed):
   eimer   clique-grow's pick: the views are updated after every batch and composed on the queried batches
   gdyn    reduced sets per variable, maintained after every batch; the result is enumerated on the queried batches
-Recorded per arm: total runtime, its split into maintenance (view updates / reduced-set updates) and query time, and
-the persistent state (bytes of the Iceberg data files of the views / of the reduced sets at the end of the run).
+Recorded per approach: total runtime, its split into maintenance (view updates / reduced-set updates) and query time,
+and the persistent state (bytes of the Iceberg data files of the views / of the reduced sets at the end of the run).
 
-Gates: gdyn == eimer on full tuples; the number of matches equals the paper's where recorded. GDYN is not run again at
+Checks: gdyn == eimer on full tuples; the number of matches equals the paper's where recorded. GDYN is not run at
 larger values of an axis once it did not finish.
 
 Axis values and limits (environment):
@@ -48,9 +48,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import trino_lib as tl  # noqa: E402  (wires the repository onto sys.path)
+import trino_lib as tl  # noqa: E402
 import gdyn  # noqa: E402
-import common  # noqa: E402  (demo/common.py)
+import common  # noqa: E402
 from workload.data.datagen import generate_events  # noqa: E402
 from eimer.query.query_spec import load_query_spec_file, query_spec_to_dependency_graph  # noqa: E402
 from eimer.selection.plan_selection_clique_grow import select_clique_grow_plan  # noqa: E402
@@ -62,7 +62,7 @@ from selectivity_payload import parse_selectivities_payload  # noqa: E402
 BASE = dict(k=4, ftype=0.05, ntypes=8, seed=42)
 W_MS = {"acyclic": 0, "cyclic": 1000}
 SIGMA_A, SIGMA_B = 0.02, 0.01
-BATCH_EVENTS = 200                       # part a: batches of 200 events
+BATCH_EVENTS = 200
 SPECS = Path(os.environ.get("EIMER_REPRO_SPECS_DIR", HERE / "specs"))
 REFERENCE = json.loads((tl.REPRO / "reference" / "paper_trino.json").read_text()).get("fig10", {})
 BACKEND = backend_for(SqlDialect.TRINO)
@@ -82,7 +82,7 @@ SCHED_B = tl.env_list("EIMER_REPRO_FIG10_SCHED_B", (1000,))[0]
 PCTS = tl.env_list("EIMER_REPRO_FIG10_PCTS", (100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 1), _pct)
 SKEW_N = tl.env_list("EIMER_REPRO_FIG10_SKEW_N", (25_000,))[0]
 SKEWS = ("rare_ends", "rare_interior")
-RARE_RATE, OTHER_RATE = 0.01, 0.10       # part s: the rare pattern types, every other type
+RARE_RATE, OTHER_RATE = 0.01, 0.10
 PARTS = [p for p in os.environ.get("EIMER_REPRO_FIG10_PARTS", "a,b,s").split(",") if p]
 assert set(CLASSES) <= set(W_MS), CLASSES
 assert all(n % BATCH_EVENTS == 0 for n in NS + [NC, SKEW_N]), f"parts a and s: table sizes are multiples of {BATCH_EVENTS}"
@@ -113,8 +113,7 @@ def events_frame(c: dict):
 
 
 def cells() -> list:
-    """part a per class (N ascending, then k ascending: the order the censoring rule needs), then part b, then part s
-    (per class the uniform table, then the two skewed ones)."""
+    """the workloads in execution order."""
     out: dict = {}
     if "a" in PARTS:
         for cls in CLASSES:
@@ -141,8 +140,7 @@ def limit_s(c: dict) -> int:
 
 
 def chain_spec(k: int, w_ms: int) -> dict:
-    """the stored chain query of length k on the generator's schema (variable i of type T<i>, band between consecutive
-    variables), plus the window as a (first, last) condition for the cyclic query."""
+    """the chain query of length k."""
     hw = common.HALF_WIDTH
     spec = json.loads((common.SPEC_DIR / f"q{k}_chain_rare_spatial.json").read_text())
     vs = list("ABCDEFGH"[:k])

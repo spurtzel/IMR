@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/** Per-start selection of the compose candidate rows. */
 public final class Selection {
     private Selection() {
     }

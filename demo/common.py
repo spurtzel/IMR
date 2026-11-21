@@ -1,9 +1,5 @@
-"""Shared helpers for the demo experiment drivers.
-
-Everything here is engine-free: query-spec patching to the synthetic-data schema,
-DatagenConfig construction, and constant-selectivity workloads. The live Trino
-side lives in demo/trino_exec.py.
-"""
+"""Shared helpers for the demo experiment drivers: query-spec patching to the synthetic-data schema,
+`DatagenConfig` construction, and constant-selectivity workloads."""
 from __future__ import annotations
 
 import hashlib
@@ -25,20 +21,14 @@ from workload.data.datagen import (  # noqa: E402
 from eimer.query.query_spec import load_query_spec_file, query_spec_to_dependency_graph  # noqa: E402
 from eimer.workload import ConstantSelectivity, Selectivities, make_workload  # noqa: E402
 
-# Synthetic-data model: NTYPES event types T0..T7 so any pattern length k <= 8 runs on
-# one table; each type covers FTYPE of the rows. Band half-width is fixed and the QUERY
-# band must reuse it. Selectivity is calibrated at generation time: BandTarget(sigma,
-# half_width) makes two i.i.d. rows fall inside the band with probability sigma;
-# EquiTarget(sigma) adds a categorical ekey column balanced over K = round(1/sigma)
-# values (equality selectivity 1/K, independent of the spatial clusters).
 NTYPES = 8
 FTYPE = 0.05
 SEED = 42
 HALF_WIDTH = 0.02
-EQUI_SIGMA = 0.25  # band_equi cells: fixed K=4 key; per-edge sigma = band sigma * EQUI_SIGMA
+EQUI_SIGMA = 0.25
 EVENT_COLS = ("id", "time", "ts", "primary_type", "etype", "lon", "lat")
 
-SPEC_DIR = REPO / "execution" / "query_specs" / "overnight_suite"
+SPEC_DIR = REPO / "execution" / "query_specs" / "synthetic"
 TOPOLOGY_SPECS = {
     (3, "chain"): "q3_chain_rare_spatial", (3, "star"): "q3_star_rare_spatial",
     (3, "triangle"): "q3_triangle_rare_spatial", (3, "long_edge"): "q3_long_edge_rare_spatial",
@@ -60,11 +50,11 @@ def type_names(ntypes: int = NTYPES) -> list[str]:
 
 
 def patch_spec_for_datagen(k: int, topology: str, predicates: str = "band") -> str:
-    """Patch a stored query spec to the synthetic-data schema: variable i matches
-    primary_type='T{i}'; every dependent predicate body is rewritten per ,,predicates'':
-    band = the 2-D lon/lat band with HALF_WIDTH, equi = ekey equality, band_equi =
-    both conjoined. Structure (variables + edge topology) is kept. Returns the
-    patched path."""
+    """Patch a stored query spec to the synthetic-data schema and return the patched path.
+
+    Variable i matches `primary_type='T{i}'`. Each dependent predicate body is rewritten per
+    `predicates`: `band` (2-D lon/lat band with HALF_WIDTH), `equi` (ekey equality), or
+    `band_equi` (both conjoined). Variables and edge topology are unchanged."""
     if predicates not in ("band", "equi", "band_equi"):
         raise SystemExit(f"unknown predicate class {predicates!r}")
     name = TOPOLOGY_SPECS[(k, topology)]
@@ -102,10 +92,10 @@ def patch_spec_for_datagen(k: int, topology: str, predicates: str = "band") -> s
 def make_datagen_config(scale: int, sigma: float, *, ftype: float = FTYPE,
                         ntypes: int = NTYPES, seed: int = SEED,
                         predicates: str = "band") -> DatagenConfig:
-    """The calibrated synthetic generator config: uniform per-type rate, Chicago-like
-    spatial mixture, 1-ms temporal grid. sigma calibrates the band (predicates=band),
-    the equi key (equi: realized as 1/round(1/sigma)), or the band with the fixed
-    EQUI_SIGMA key on top (band_equi: per-edge sigma = sigma * EQUI_SIGMA)."""
+    """Synthetic generator config: uniform per-type rate, Chicago-like spatial mixture, 1-ms temporal
+    grid. `sigma` is the band selectivity (`predicates=band`), the equi-key selectivity (`equi`,
+    realized as 1/round(1/sigma)), or the band selectivity with the fixed `EQUI_SIGMA` key on top
+    (`band_equi`: per-edge sigma = sigma * EQUI_SIGMA)."""
     band = BandTarget(sigma=sigma, half_width_lon=HALF_WIDTH, half_width_lat=HALF_WIDTH)
     spatial_band, equi = {"band": (band, None),
                           "equi": (None, EquiTarget(sigma)),
@@ -130,10 +120,7 @@ def generate_frame(scale: int, sigma: float, *, ftype: float = FTYPE, seed: int 
 
 def const_sigma_workload(dep, *, total_events: int, batches: int,
                          sigma: float, ftype: float = FTYPE):
-    """Workload using the generation-target selectivities (constant per edge). The
-    memory-budget demo uses these calibrated targets so its budget descent stays
-    engine-free; the other drivers select from measured b_unified estimates
-    (trino_exec.b_unified_workload)."""
+    """Workload using the generation-target selectivities (constant per edge)."""
     sels = Selectivities(
         independent={v: ftype for v in dep.variables},
         dependent={(e.var_left, e.var_right): (ConstantSelectivity(sigma),)

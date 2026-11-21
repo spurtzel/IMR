@@ -8,17 +8,15 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 WHICH="${1:-}"
 case "$WHICH" in fig8|fig9|fig10|kleene|budget_shift|realworld|topology_memory) ;; *) echo "usage: run_trino_experiment.sh fig8|fig9|fig10|kleene|budget_shift|realworld|topology_memory"; exit 2 ;; esac
-read -r -a DK <<< "${DOCKER:-docker}"   # the container command, possibly several words ("sudo docker")
+read -r -a DK <<< "${DOCKER:-docker}"
 PIN=(); [ -n "${CPUSET:-}" ] && PIN=(--cpuset-cpus "$CPUSET")
 IMAGE=eimer-experiments; TRINO_IMAGE=eimer-trino
-NET="eimer-trino-net-$WHICH${RUN_ID:+-$RUN_ID}"; TRINO="eimer-trino-$WHICH${RUN_ID:+-$RUN_ID}"   # RUN_ID: several runs side by side
+NET="eimer-trino-net-$WHICH${RUN_ID:+-$RUN_ID}"; TRINO="eimer-trino-$WHICH${RUN_ID:+-$RUN_ID}"
 HEAP="${TRINO_HEAP_GB:-8}"
-EXPERIMENT_CATALOG="${EXPERIMENT_CATALOG:-iceberg}"   # the catalog this experiment runs on unless CATALOG says otherwise
+EXPERIMENT_CATALOG="${EXPERIMENT_CATALOG:-iceberg}"
 CATALOG="${CATALOG:-$EXPERIMENT_CATALOG}"
 case "$CATALOG" in iceberg|memory) ;; *) echo "CATALOG: iceberg or memory"; exit 2 ;; esac
-# a run on the other catalog keeps its records apart
 if [ "$CATALOG" = "$EXPERIMENT_CATALOG" ]; then DEFAULT_OUT="trino_$WHICH"; else DEFAULT_OUT="trino_${WHICH}_$CATALOG"; fi
-# the result files must belong to the calling user
 if [ "$(basename "${DK[-1]}")" = podman ]; then USERARGS=(--userns=keep-id); else USERARGS=(--user "$(id -u):$(id -g)"); fi
 
 if [ "${SKIP_BUILD:-0}" = "1" ]; then
@@ -29,15 +27,14 @@ else
   "${DK[@]}" build -t "$IMAGE" --build-arg WITH_TEX="${WITH_TEX:-1}" -f reproducibility/docker/Dockerfile.experiments .
 fi
 
-# options that change the server's configuration: a derived server image is built on the fly
 DERIVED_TAG=""; DERIVED_LINES=()
-if [ -n "${TRINO_WORKER_THREADS:-}" ]; then   # the worker-thread cap
+if [ -n "${TRINO_WORKER_THREADS:-}" ]; then
   case "$TRINO_WORKER_THREADS" in ''|*[!0-9]*) echo "TRINO_WORKER_THREADS: a positive integer"; exit 2 ;; esac
   DERIVED_LINES+=("RUN printf '\\ntask.max-worker-threads=$TRINO_WORKER_THREADS\\n' >> /etc/trino/config.properties")
   DERIVED_TAG+="-wt$TRINO_WORKER_THREADS"
   echo "== worker threads capped at $TRINO_WORKER_THREADS"
 fi
-if [ -n "${TRINO_MEMORY_CATALOG_GB:-}" ]; then   # larger in-memory tables, with the heap that holds them
+if [ -n "${TRINO_MEMORY_CATALOG_GB:-}" ]; then
   case "$TRINO_MEMORY_CATALOG_GB" in ''|*[!0-9]*) echo "TRINO_MEMORY_CATALOG_GB: a positive integer"; exit 2 ;; esac
   QUERY_MEM=$((HEAP - 2 - TRINO_MEMORY_CATALOG_GB))
   [ "$QUERY_MEM" -ge 2 ] || { echo "TRINO_HEAP_GB ($HEAP) must be at least TRINO_MEMORY_CATALOG_GB ($TRINO_MEMORY_CATALOG_GB) + 4"; exit 2; }

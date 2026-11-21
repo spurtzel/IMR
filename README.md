@@ -5,7 +5,7 @@ EIMER evaluates SQL `MATCH_RECOGNIZE` (MR) queries over append-only tables incre
 ## Requirements
 
 - **With Docker:** nothing else. The demo and all experiments build their own images. The scripts need Linux with bash 4.4 or newer; the experiments also run with Podman.
-- **Without containers:** Python >= 3.10.9 with the pinned packages (`pip install -r requirements.txt`) and a Trino server reachable at `$TRINO_SERVER` (e.g. `localhost:8080`). The Esper experiment also needs Java 21 and Maven.
+- **Without containers:** Python 3.10 or newer with the pinned packages (`pip install -r requirements.txt`) and a Trino server reachable at `$TRINO_SERVER` (e.g. `localhost:8080`). The Esper experiment also needs Java 21 and Maven.
 
 ## Docker demo
 
@@ -19,7 +19,7 @@ The results are in `docker/out/`. The run passes if every EIMER result has the s
 
 ## Experiment reproducibility
 
-The paper evaluates EIMER on four engines: DBMS A, Trino, DuckDB and Esper. DBMS A is a commercial system that we cannot distribute. We therefore reproduce the experiments on the three open engines, in containers, with one script per experiment. The Trino series of Fig. 8a, Fig. 8b and Fig. 8c run on the paper's engines. The experiments that the paper reports on DBMS A run on Trino here: Figs. 9 to 12, Table 4, and the results of §7.4 that have no figure.
+The paper evaluates EIMER on four engines: DBMS A, Trino, DuckDB and Esper. DBMS A is a commercial system that we cannot distribute. We therefore reproduce the experiments on the three open engines, in containers, with one script per experiment. Fig. 8a (its Trino series), Fig. 8b and Fig. 8c run on the paper's engines. The experiments that the paper reports on DBMS A run on Trino here: Figs. 9 to 12, Table 4, and the results of §7.4 that have no figure.
 
 Trino is much slower than DBMS A on these workloads; the paper's Fig. 8a shows both on the same data. On Trino we therefore use smaller tables and, in some experiments, other parameters. [`reproducibility/README.md`](reproducibility/README.md) lists the differences. Runtimes and speed-ups therefore differ from the paper's numbers, while the comparison between the approaches carries over.
 

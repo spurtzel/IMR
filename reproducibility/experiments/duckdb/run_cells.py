@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""The DuckDB arms per cell: generate + load the table, estimate the selectivities on the loaded table, select
-EIMER's materialization strategy (clique-grow), then
+"""The DuckDB approaches per cell: generate and load the table, estimate the selectivities on the loaded table, select
+EIMER's materialization strategy (clique-grow), then run
   (1) the transpiled MATCH_RECOGNIZE baseline, re-executed after every batch over the table so far, and
   (2) EIMER on the selected strategy: view updates per batch + composition and selection at every query.
-Both arms run single-shot (no warm-up) in one thread under the cell's time limit, per statement AND per arm; an arm
-that exceeds it is recorded as DNF. Writes <results>/records/<cell>.json.
+Both run in one thread under the cell's time limit per statement and per approach; an approach that exceeds it is
+recorded as DNF. Writes <results>/records/<cell>.json.
 
-Configuration of the paper's runs, all recorded in every record:
-  * baseline: DuckDB's join-order optimizer ON (BASELINE_OPTIMIZER=1)
-  * EIMER: the composition is emitted over the plan's (bushy) join tree and DuckDB's join reordering is disabled, so
-    the engine executes the selected plan (EIMER_OPTIMIZER=0)
-  * selection: kappa from KAPPA_FILE (the engine constant of the paper's runs)
-  * correctness: the final result sets of both arms are compared on full tuples (in_engine_identity)
+Configuration of the paper's runs, recorded in every record:
+  * baseline: DuckDB's join-order optimizer on (BASELINE_OPTIMIZER=1)
+  * EIMER: the composition is emitted over the plan's (bushy) join tree and DuckDB's join reordering is disabled
+    (EIMER_OPTIMIZER=0)
+  * selection: kappa from KAPPA_FILE
+  * correctness: the final result sets of both approaches are compared on full tuples (in_engine_identity)
 
-Resume-safe: a cell with a record is skipped unless --force.
+A cell with a record is skipped unless --force.
 Usage: run_cells.py [--only k4_n25000_b25_w60,...] [--force] [--results-dir results]
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import cells  # noqa: E402  (puts the repository on sys.path)
+import cells  # noqa: E402
 from transpile import bounded_gap_in_input, transpiled_sql_for  # noqa: E402
 
 import duckdb  # noqa: E402
@@ -38,12 +38,12 @@ from eimer.sql import sql_emitter  # noqa: E402
 from eimer.sql.backend import SqlDialect, backend_for  # noqa: E402
 
 RECORDS = HERE / "results" / "records"
-MEMORY_LIMIT = "12GB"  # a runaway statement is a censored DNF, not a killed process
+MEMORY_LIMIT = "12GB"
 KAPPA_FILE = Path(os.environ.get("KAPPA_FILE", HERE / "kappa_duckdb.json"))
 KAPPA = float(json.loads(KAPPA_FILE.read_text())["kappa"])
 FULL_ANCHOR = {"0": False, "1": "always", "edgeless": "edgeless"}[os.environ.get("FULL_ANCHOR", "0")]
-BASELINE_OPTIMIZER = os.environ.get("BASELINE_OPTIMIZER", "1") == "1"   # the transpiled baseline with DuckDB's join-order optimizer
-EIMER_OPTIMIZER = os.environ.get("EIMER_OPTIMIZER", "0") == "1"         # 0 = EIMER's join order pinned (the paper's runs)
+BASELINE_OPTIMIZER = os.environ.get("BASELINE_OPTIMIZER", "1") == "1"
+EIMER_OPTIMIZER = os.environ.get("EIMER_OPTIMIZER", "0") == "1"
 STAR_ARM = os.environ.get("EIMER_REPRO_STAR", "0") == "1"
 
 
@@ -67,14 +67,12 @@ def run_cell(c: dict, force: bool = False) -> dict:
 
     frame = cells.generate_frame(c)
     client = duckdb_exec.connect(timeout_s=T, memory_limit=MEMORY_LIMIT, pin_join_order=not EIMER_OPTIMIZER)
-    # DuckDB spills to ".tmp" in the working directory: every process gets its own temp directory
     _tmp = RECORDS.parent / "tmp" / f"{name}.{os.getpid()}"; _tmp.mkdir(parents=True, exist_ok=True)
     client.execute(f"SET temp_directory='{_tmp}'")
     loaded = duckdb_exec.load_frame(client, frame, table="events")
     assert loaded == len(frame) == c["n"], (loaded, len(frame), c["n"])
     settings_eimer = client.settings()
     assert settings_eimer.get("disabled_optimizers", "") == ("" if EIMER_OPTIMIZER else "join_order"), settings_eimer
-    # the transpiled baseline on its own connection, with DuckDB's join-order optimizer
     client_b = client
     if BASELINE_OPTIMIZER:
         from duckdb_client import DuckDBClient, DuckDBConnectionConfig
@@ -103,7 +101,6 @@ def run_cell(c: dict, force: bool = False) -> dict:
                                                                          for k, v in pick.certificate.items()}))
     print(f"[{name}] N={c['n']} B={c['batches']} W={c['w_ms']}ms k={c['k']} pick={toks} (kappa={KAPPA}, full_anchor={FULL_ANCHOR}) wall={T}s", flush=True)
 
-    # --- arm 1: transpiled baseline, per-batch re-execution (single-shot) ---
     rss0 = _rss_mb(); t0 = time.time()
     ms, n, tuples, meta = duckdb_exec.baseline_streaming(client_b, baseline_sql, "events", c["n"], c["batches"], qb, key_cols, T,
                                                          warmup=False, total_wall_s=T)
@@ -117,7 +114,6 @@ def run_cell(c: dict, force: bool = False) -> dict:
     tuples_t = tuples
     print(f"   transpiled: {rec['transpiled']['status']} total={ms} ms matches={n}", flush=True)
 
-    # --- arm 2: EIMER on the selector's pick ---
     star = [f"{vs[0]}_{v}" for v in vs[1:]]
     rec["tuples"] = {"transpiled": sorted(map(list, tuples_t)) if tuples_t is not None else None}
     rec["compose_sql"] = {}
@@ -128,7 +124,6 @@ def run_cell(c: dict, force: bool = False) -> dict:
             rec[arm] = dict(status="same_as_pick", cover=star)
             print("   eimer_star: same cover as the pick", flush=True)
             continue
-        # evidence: the emitted composition statement; "nested" = the plan's join tree is rendered as nested subqueries
         st = eimer_arm.cover_statements(dep, cover, all_vars, wl, dialect=SqlDialect.DUCKDB)
         rec["compose_sql"][arm] = dict(composition_sql=st.composition_sql, nested=("tn1" in st.composition_sql), views=len(cover))
         rss0 = _rss_mb(); t0 = time.time(); fb0 = client.planner_fallbacks
@@ -142,7 +137,6 @@ def run_cell(c: dict, force: bool = False) -> dict:
                         rss_peak_delta_mb=round(_rss_mb() - rss0, 1), wall_clock_s=round(time.time() - t0, 1))
         new_t = sorted(map(list, tuples)) if tuples is not None else None
         rec["tuples"][arm] = new_t
-        # in-engine agreement with the transpiled arm (final full-tuple sets)
         rec[f"identity_{arm}"] = (None if (new_t is None or rec["tuples"]["transpiled"] is None) else (new_t == rec["tuples"]["transpiled"]))
         if rec["transpiled"]["total_ms"] and ms:
             rec[f"speedup_{arm}_vs_transpiled"] = round(rec["transpiled"]["total_ms"] / ms, 3)

@@ -1,13 +1,11 @@
-"""Load an external dataset (datagen manifest + parquet) into Trino.
+"""Loads an external dataset (datagen manifest + parquet) into Trino.
 
 Loads into a staging table via chunked INSERT ... VALUES (statements are
-character-budgeted: Trino's query.max-length defaults to 1,000,000 chars),
-then finalizes with a single CTAS. Idempotent: a matching fingerprint in
-generated_events_meta skips the load unless --force.
+character-budgeted to Trino's query.max-length), then finalizes with a single CTAS.
+Idempotent: a matching fingerprint in generated_events_meta skips the load unless --force.
 
-Literal fidelity: timestamps as TIMESTAMP '... .ffffff' (microseconds), floats
-as typed DOUBLE '<repr>' literals; bare decimals would parse as DECIMAL and
-the DECIMAL->DOUBLE coercion is not guaranteed correctly rounded.
+Literals: timestamps as TIMESTAMP '... .ffffff' (microseconds), floats
+as typed DOUBLE '<repr>' literals.
 """
 
 from __future__ import annotations
@@ -77,9 +75,9 @@ def iter_insert_statements(rows: Iterable[tuple], *, table: str, chunk_chars: in
 
 
 def _existing_fingerprint(client: TrinoClient) -> tuple[str, int] | None:
-    """(fingerprint, total_rows) from the meta marker, but only if the events
-    table itself still matches: an in-Trino CTAS run drops the meta marker,
-    yet a half-torn state must not let the fast path skip a needed reload."""
+    """(fingerprint, total_rows) from the meta marker, only if the events
+        table itself still matches.
+    """
     try:
         _, rows = client.execute(f"SELECT manifest_fingerprint, total_rows FROM {META_TABLE}")
     except TrinoClientError:
@@ -97,7 +95,6 @@ def _existing_fingerprint(client: TrinoClient) -> tuple[str, int] | None:
 
 
 def load(manifest_path: Path, client: TrinoClient, *, chunk_chars: int, force: bool) -> dict:
-    # Heavy deps only when actually loading.
     from workload.data.datagen.writer import content_fingerprint, load_manifest, read_dataset_frames
     import pandas as pd
 

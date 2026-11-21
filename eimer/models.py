@@ -329,8 +329,6 @@ class DependencyGraph:
     vertices: Dict[str, DependencyVertex]
     edges: List[DependencyEdge]
     warnings: List[str] = field(default_factory=list)
-    # measures carried from the normalized ir so the emitter can project them;
-    # populated by build_dependency_graph.
     measures: Tuple[NormalizedMeasure, ...] = ()
 
     @property
@@ -399,10 +397,9 @@ class CompositionJoinGraph:
 
 @dataclass(frozen=True)
 class JoinTreeNode:
-    """bushy join tree over composition leaves. a leaf carries ,,node'' (a ,,View''); an inner
-    node carries ,,left'' and ,,right'' sub-trees. exactly one holds (leaf xor inner join),
-    enforced by ,,__post_init__''. optional on ,,CompositionPlan''/,,UpdatePlan''; ,,None''
-    everywhere means the default left-deep plans, and it never participates in plan_id hashing."""
+    """bushy join tree over composition leaves. a leaf carries `node` (a `View`); an inner
+    node carries `left` and `right` sub-trees (exactly one form, checked in `__post_init__`).
+    optional on `CompositionPlan`/`UpdatePlan`; `None` means the left-deep plan."""
 
     node: Optional[View] = None
     left: Optional["JoinTreeNode"] = None
@@ -418,7 +415,7 @@ class JoinTreeNode:
 
     @property
     def views(self) -> FrozenSet[View]:
-        """the leaf ,,View''s of the tree (the composition leaves it joins)."""
+        """the leaf `View`s of the tree (the composition leaves it joins)."""
         if self.node is not None:
             return frozenset({self.node})
         return self.left.views | self.right.views
@@ -488,9 +485,9 @@ class SQLStatements:
 
 @dataclass(frozen=True)
 class StrategyWithPlans:
-    """materialization strategy plus its generated plan families. ,,effective_view_set''
-    and ,,composition_plans'' hold the single canonical cover; ,,composition_covers'' and
-    ,,composition_variants'' hold the enumerated covers and concrete join variants."""
+    """materialization strategy plus its generated plan families. `effective_view_set`
+    and `composition_plans` hold the single canonical cover; `composition_covers` and
+    `composition_variants` hold the enumerated covers and concrete join variants."""
 
     strategy: Set[View]
     effective_view_set: Set[View]

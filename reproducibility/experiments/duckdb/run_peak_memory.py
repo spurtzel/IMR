@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Peak resident memory per arm, each arm in its own fresh process.
+"""Peak resident memory per approach, each approach in its own process.
 
-Inside one process the second arm's memory growth is hidden whenever it stays below the first arm's peak, so the arms'
-transient memory cannot be compared there. Here the parent spawns one child per (cell, arm); the child loads the table,
-runs that one arm exactly as run_cells.py does (baseline: DuckDB's join-order optimizer; EIMER: the pinned join order on
-the recorded strategy) and reports its own ru_maxrss before the arm (after the data load) and at the end.
-Transient = peak - after-load: the figure's memory bars. The runtime is recorded as a cross-check only; the figure's
-runtime series stay those of run_cells.py. Gate: the arm's final tuples == the stored tuples of that arm in the
-runtime record.
+The parent spawns one child per (cell, approach); the child loads the table, runs that one approach as run_cells.py
+does (baseline: DuckDB's join-order optimizer; EIMER: the pinned join order on the recorded strategy) and reports its
+own ru_maxrss after the data load and at the end.
+Transient = peak - after-load: the figure's memory bars. The runtime is recorded as a cross-check. The check: the
+approach's final tuples equal the stored tuples of that approach in the runtime record.
 
   run_peak_memory.py --runtime results --out results_peakmem [--only k4_n25000_b25_w60,...]
 """
@@ -37,7 +35,7 @@ def child(arm: str, name: str, runtime: Path, out_json: Path) -> None:
     import duckdb  # noqa
     import duckdb_exec  # noqa
     from transpile import transpiled_sql_for  # noqa
-    import run_cells  # noqa  (MEMORY_LIMIT and the run's switches)
+    import run_cells  # noqa
     rec = json.loads((runtime / "records" / f"{name}.json").read_text()); c = rec["params"]
     T = cells.wall_seconds(c)
     spec, dep, _ = cells.load_spec(c["k"], c["w_ms"]); pos = dep.positions
@@ -70,12 +68,12 @@ def child(arm: str, name: str, runtime: Path, out_json: Path) -> None:
     peak = _rss_mb(); wall = time.time() - t0
     new_t = sorted(map(list, tuples)) if tuples is not None else None; old_t = (rec.get("tuples") or {}).get(arm)
     out = dict(arm=arm, cover=cover, status="ok" if ms is not None else "dnf", total_ms=ms, wall_clock_s=round(wall, 1), final_count=n,
-               campaign_total_ms=rec[arm].get("total_ms"), campaign_final_count=rec[arm].get("final_count"),
-               identity_vs_campaign=(None if (new_t is None or old_t is None) else new_t == old_t),
+               runtime_total_ms=rec[arm].get("total_ms"), runtime_final_count=rec[arm].get("final_count"),
+               identity_vs_runtime=(None if (new_t is None or old_t is None) else new_t == old_t),
                rss_start_mb=round(rss_start, 1), rss_after_load_mb=round(rss_load, 1), peak_rss_mb=round(peak, 1),
                transient_mb=round(peak - rss_load, 1), settings=settings, engine=f"duckdb {duckdb.__version__}")
     client.close(); out_json.write_text(json.dumps(out))
-    print(f"   {arm:10s}: {out['status']} total={ms} ms (runtime record {out['campaign_total_ms']}) matches={n} identity={out['identity_vs_campaign']} "
+    print(f"   {arm:10s}: {out['status']} total={ms} ms (runtime record {out['runtime_total_ms']}) matches={n} identity={out['identity_vs_runtime']} "
           f"rss after load {rss_load:.0f} MB -> peak {peak:.0f} MB = transient {peak - rss_load:.0f} MB", flush=True)
 
 
@@ -95,9 +93,9 @@ def parent(runtime: Path, out: Path, only: set[str]) -> None:
         src_rec = json.loads(src.read_text())
         print(f"[{name}] N={c['n']} B={c['batches']} W={c['w_ms']}ms k={c['k']} wall={cells.wall_seconds(c)}s: one fresh process per arm", flush=True)
         rec = dict(cell=name, params=c, wall_s=cells.wall_seconds(c), mode="peak memory, one process per arm",
-                   campaign_record=f"{runtime.name}/records/{name}.json", memory_limit=run_cells.MEMORY_LIMIT)
+                   runtime_record=f"{runtime.name}/records/{name}.json", memory_limit=run_cells.MEMORY_LIMIT)
         for arm in ARMS:
-            if (src_rec.get(arm) or {}).get("status") != "ok":   # no memory is reported for an arm that did not finish
+            if (src_rec.get(arm) or {}).get("status") != "ok":
                 rec[arm] = dict(arm=arm, status=(src_rec.get(arm) or {}).get("status", "not_measured"), notes="did not finish in the runtime run; not re-executed")
                 print(f"   {arm}: {rec[arm]['status']} in the runtime run, not re-executed", flush=True); continue
             tmp_json = out / "tmp" / f"{name}.{arm}.json"

@@ -1,10 +1,5 @@
 {
  "name": "taxi_Q1",
- "suite_metadata": {
-  "pattern_length": 3,
-  "shape": "chain",
-  "doc": "Same-route price surge: an identical OD pair priced >=$15 higher within 15 minutes.; the surge keeps climbing on the route"
- },
  "variables": [
   {
    "name": "A",

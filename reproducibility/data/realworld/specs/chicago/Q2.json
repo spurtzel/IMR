@@ -1,10 +1,5 @@
 {
  "name": "chicago_Q2",
- "suite_metadata": {
-  "pattern_length": 3,
-  "shape": "triangle",
-  "doc": "Dense, mutually-proximate violent-crime cluster within a week (flashpoint detection)."
- },
  "variables": [
   {
    "name": "A",

@@ -6,12 +6,11 @@ For a subsequence of the pattern variables that contains the first and the last 
   ranges     joins the events of these variables (types, bands between pattern-adjacent variables, time order, the
              window) and keeps the time range [first.ts, last.ts] of every combination,
   prefilter  keeps the events that lie in at least one range,
-and evaluates the unchanged MATCH_RECOGNIZE on the prefiltered events only. The trailing MATCH_RECOGNIZE checks every
-condition again, so every subsequence yields the same result; they differ in cost. As in the paper, all subsequences
-are executed and the fastest is reported.
+and evaluates the unchanged MATCH_RECOGNIZE on the prefiltered events only. Every subsequence yields the same result;
+they differ in cost. All subsequences are executed and the fastest is reported.
 
-Window propagation is applied throughout: the join carries the time bound the window implies on every pair of its
-variables, and the MATCH_RECOGNIZE states the window on the gap variable as well (as the native baseline).
+The join carries the time bound the window implies on every pair of its variables, and the MATCH_RECOGNIZE states the
+window on the gap variable as well.
 """
 from __future__ import annotations
 
@@ -30,8 +29,8 @@ def enumerate_subsets(vs: list) -> list:
 
 
 def prefilter_mr_sql(spec, vs, types, half_width, subset, events_table, w_ms, key_cols) -> str:
-    """one statement: ranges + prefilter over ,,subset'', then the query's MATCH_RECOGNIZE over the prefiltered events.
-    ,,events_table'' is the accumulated table expression, e.g. (SELECT * FROM events WHERE id <= hi)."""
+    """one statement: ranges + prefilter over `subset`, then the query's MATCH_RECOGNIZE over the prefiltered events.
+    `events_table` is the accumulated table expression, e.g. (SELECT * FROM events WHERE id <= hi)."""
     sub = list(subset)
     first, last = sub[0], sub[-1]
     assert (first, last) == (vs[0], vs[-1])
@@ -39,12 +38,12 @@ def prefilter_mr_sql(spec, vs, types, half_width, subset, events_table, w_ms, ke
     w = f"INTERVAL '{w_ms / 1000.0:g}' SECOND"
     conds = [f"{a}.ts <= {b}.ts" for a, b in zip(sub, sub[1:])]
     conds += [f"{v}.primary_type = '{types[v]}'" for v in sub]
-    for left, right in zip(vs, vs[1:]):   # bands between pattern-adjacent variables that are both in the subsequence
+    for left, right in zip(vs, vs[1:]):
         if left in sub and right in sub:
             conds.append(f"{right}.lon BETWEEN {left}.lon - {hw_lon} AND {left}.lon + {hw_lon} "
                          f"AND {right}.lat BETWEEN {left}.lat - {hw_lat} AND {left}.lat + {hw_lat}")
-    conds.append(f"{last}.ts <= {first}.ts + {w}")   # the window
-    conds += [f"{b}.ts <= {a}.ts + {w}" for i, a in enumerate(sub) for b in sub[i + 1:] if (a, b) != (first, last)]   # implied by it
+    conds.append(f"{last}.ts <= {first}.ts + {w}")
+    conds += [f"{b}.ts <= {a}.ts + {w}" for i, a in enumerate(sub) for b in sub[i + 1:] if (a, b) != (first, last)]
     froms = ", ".join(f"({events_table}) {v}" for v in sub)
     ranges = (f"ranges AS (\n    SELECT {first}.ts AS t_s, {last}.ts AS t_e\n    FROM {froms}\n    WHERE "
               + "\n      AND ".join(conds) + "\n  )")
@@ -56,10 +55,10 @@ def prefilter_mr_sql(spec, vs, types, half_width, subset, events_table, w_ms, ke
 
 @tl.track_peak
 def prefilter_streaming(client, spec, vs, types, half_width, subset, table, n, batches, qb, w_ms, key_cols, wall_s, cap_ms=None, total_s=None):
-    """the prefiltered query over the accumulated table, once per queried batch (both steps re-run). ,,wall_s'' applies
-    per statement. ,,cap_ms'': the best total of a subsequence already measured on this workload; a subsequence is
-    stopped once it exceeds it (status "dominated": slower than the reported one, no need to finish it). ,,total_s'':
-    limit for the subsequence's total; past it the subsequence ends as a DNF (its time is a lower bound).
+    """the prefiltered query over the accumulated table, once per queried batch. `wall_s` applies per statement.
+    `cap_ms`: the best total of a subsequence already measured on this workload; a subsequence is stopped once it
+    exceeds it (status "dominated"). `total_s`: limit for the subsequence's total; past it the subsequence ends as a
+    DNF (its time is a lower bound).
     Returns a record dict and the final tuple set (None unless it finished)."""
     tot = 0.0
     tuples = None

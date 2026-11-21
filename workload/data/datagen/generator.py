@@ -1,10 +1,8 @@
-"""Vectorized event-stream generation with the exact EIMER benchmark schema.
+"""Vectorized event-stream generation with the EIMER benchmark schema.
 
-Determinism contract: for a fixed (config, seed) and pinned library versions
-the output is identical. The RNG draw order is part of that contract:
+Output is deterministic for a fixed (config, seed) and library versions. RNG draw order:
 (1) type permutation, (2) cluster membership, (3) cluster index,
-(4) lon uniforms, (5) lat uniforms. Do not reorder.
-"""
+(4) lon uniforms, (5) lat uniforms."""
 
 from __future__ import annotations
 
@@ -25,9 +23,9 @@ class GenerationResult:
     frame: pd.DataFrame
     layout: SpatialLayout
     type_counts: dict[str, int]
-    rho_mean: float  # realized mean rate, events/second
-    rho_eff: float  # row-weighted mean local rate (determines temporal sigma)
-    equi_predicted_sigma: float | None = None  # derived P(key_a==key_b), distinct rows
+    rho_mean: float
+    rho_eff: float
+    equi_predicted_sigma: float | None = None
 
 
 def exact_type_counts(config: DatagenConfig) -> dict[str, int]:
@@ -37,8 +35,6 @@ def exact_type_counts(config: DatagenConfig) -> dict[str, int]:
     floors = {name: int(np.floor(value)) for name, value in raw}
     remainder_order = sorted(raw, key=lambda item: (item[1] - np.floor(item[1]), item[0]), reverse=True)
     leftover = round(sum(value for _, value in raw)) - sum(floors.values())
-    # ,,leftover'' extra rows go to the largest fractional parts (ties broken by
-    # name for determinism).
     for name, _ in remainder_order[: max(0, leftover)]:
         floors[name] += 1
     assigned = sum(floors.values())
@@ -59,10 +55,8 @@ def _type_column(config: DatagenConfig, counts: dict[str, int], rng: np.random.G
 def _timestamps_micros(config: DatagenConfig) -> tuple[np.ndarray, float, float]:
     """Strictly increasing integer-microsecond offsets plus (rho_mean, rho_eff).
 
-    Spacings are integer nanoseconds (>= 1000 ns each, enforced by config),
-    accumulated in int64 and floored to microseconds, so microsecond values
-    are strictly increasing with no float accumulation or tie hazard.
-    """
+    Spacings are integer nanoseconds (>= 1000 ns each), accumulated in int64 and
+    floored to microseconds."""
     n = config.total_rows
     temporal = config.temporal
     base_gap_ns = round(_NANOS_PER_SECOND / temporal.rho)
@@ -78,15 +72,13 @@ def _timestamps_micros(config: DatagenConfig) -> tuple[np.ndarray, float, float]
         burst = temporal.burst
         burst_gap_ns = round(_NANOS_PER_SECOND / (temporal.rho * burst.rate_multiplier))
         off_rows = burst.period_rows - burst.burst_rows
-        # Mean-rate constraint over one period: burst_rows*g_burst + off_rows*g_off
-        # == period_rows * (1e9 / rho).
         off_gap_ns = round((burst.period_rows * _NANOS_PER_SECOND / temporal.rho - burst.burst_rows * burst_gap_ns) / off_rows)
         if burst_gap_ns < 1000 or off_gap_ns < 1000:
             raise ValueError("burst configuration drives spacing below 1 microsecond")
         in_burst = (np.arange(n, dtype=np.int64) % burst.period_rows) < burst.burst_rows
         gaps_ns = np.where(in_burst, np.int64(burst_gap_ns), np.int64(off_gap_ns))
 
-    offsets_ns = np.cumsum(gaps_ns)  # offset of row i = sum of gaps 0..i (row 0 at one gap past epoch)
+    offsets_ns = np.cumsum(gaps_ns)
     micros = offsets_ns // 1000
     span_seconds = float(offsets_ns[-1] - offsets_ns[0]) / _NANOS_PER_SECOND if n > 1 else 0.0
     rho_mean = (n - 1) / span_seconds if span_seconds > 0 else temporal.rho
@@ -116,8 +108,7 @@ def _draw_coordinates(layout: SpatialLayout, n: int, rng: np.random.Generator) -
 
 
 def _equi_column(config: DatagenConfig) -> tuple[np.ndarray, float]:
-    """Balanced K-valued key (K = round(1/sigma)) on a DEDICATED rng stream: the
-    spatial/temporal/type draws are byte-identical with equi on or off. Returns
+    """Balanced K-valued key (K = round(1/sigma)) on a dedicated rng stream. Returns
     (codes 1..K, derived pairwise sigma from the exact balanced counts)."""
     equi = config.equi
     n = config.total_rows
@@ -125,7 +116,7 @@ def _equi_column(config: DatagenConfig) -> tuple[np.ndarray, float]:
     codes = np.tile(np.arange(1, k + 1, dtype=np.int64), n // k + 1)[:n]
     rng = np.random.default_rng(np.random.SeedSequence([config.seed, 0xE9B1]))
     rng.shuffle(codes)
-    hi, lo = n - (n // k) * k, k - (n - (n // k) * k)          # hi values get ceil(n/k)
+    hi, lo = n - (n // k) * k, k - (n - (n // k) * k)
     c, f = n // k + 1, n // k
     predicted = (hi * c * (c - 1) + lo * f * (f - 1)) / (n * (n - 1)) if n > 1 else 1.0
     return codes, predicted
@@ -146,8 +137,6 @@ def _check_expected_pair_hits(config: DatagenConfig) -> None:
             )
     if config.spatial_band is None:
         return
-    # Conservative over every ordered type pair INCLUDING self-pairs (type
-    # reuse): the rarest self-edge (rate*N)^2 is the binding case.
     expected = (rarest * n) ** 2 * config.spatial_band.sigma
     if expected < config.min_expected_pair_hits:
         raise ValueError(
@@ -178,7 +167,6 @@ def generate_events(config: DatagenConfig) -> GenerationResult:
     epoch = np.datetime64(config.temporal.epoch.replace(" ", "T"), "us")
     time = epoch + micros.astype("timedelta64[us]")
 
-    # Map per distinct type (a handful), not per row.
     etype_by_type = {name: config.etype_for(name) for name in counts}
     etype_column = pd.Series(primary_type).map(etype_by_type).to_numpy(dtype=object)
 

@@ -17,7 +17,6 @@ if [ "$PARALLEL" -gt 1 ]; then
 fi
 export PARALLEL CORES="${CORES:-}"
 
-# run_one <cell>: one cell of a stage (called through xargs). Environment: STAGE_TAG, STAGE_WD, STAGE_CMD, STAGE_ROOT, LOGS
 run_one() {
   local cell="$1" pin=""
   if [ -f "$STAGE_ROOT/records/$cell.json" ]; then echo "$(stamp)    skip  $STAGE_TAG $cell (record exists)"; return 0; fi

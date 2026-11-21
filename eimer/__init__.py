@@ -1,5 +1,5 @@
 """eimer public api: re-exports the parser, dependency-graph, planning, selection,
-cost, and sql-rendering surface (see ,,__all__'')."""
+cost, and sql-rendering surface (see `__all__`)."""
 from eimer.plans.evaluation_plan import (
     CompositionNode,
     CompositionOp,

@@ -47,7 +47,7 @@ class TrinoConnectionConfig:
 
 
 class TrinoClient:
-    dialect = SqlDialect.TRINO   # the SQL the client executes (read by the statistics gatherers)
+    dialect = SqlDialect.TRINO
 
     def __init__(self, config: TrinoConnectionConfig) -> None:
         self.config = config
@@ -157,7 +157,6 @@ class TrinoClient:
                 columns = self._extract_columns(payload)
             rows.extend(self._extract_rows(payload))
 
-        # the statement's own statistics as reported with its final response (e.g. peakMemoryBytes, cpuTimeMillis)
         self.last_stats = payload.get("stats") if isinstance(payload.get("stats"), dict) else None
         return columns, rows
 

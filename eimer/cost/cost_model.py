@@ -1,5 +1,6 @@
-"""analytic cost model: per-operator cardinality and cost for the update, compose, and
-post-filter steps of an evaluation plan."""
+"""Analytic cost model: per-operator cardinality and cost for the update, compose, and
+post-filter steps of an evaluation plan.
+"""
 
 from __future__ import annotations
 
@@ -18,8 +19,6 @@ from eimer.workload import ConstantSelectivity, DependentSelectivity, WindowSele
 
 INEQ_ORDERING_FACTOR = 0.5
 
-# plan-invariant price for the singleton MR_GROUP_DETECT (Kleene group-detect) op: every cover
-# forces K into the same singleton view, so a constant cannot mis-rank within a query, so it is 0.
 KLEENE_MR_GROUP_DETECT_CONST = 0
 
 
@@ -76,7 +75,7 @@ class _ComposeStepCardinality:
 
 
 class StateLevelTape:
-    """mutable per-view state used during costing."""
+    """Mutable per-view state used during costing."""
 
     def __init__(self, views: Iterable[View]):
         self._state: dict[View, int] = {view: 0 for view in views}
@@ -117,8 +116,6 @@ def _with_context(plan: EvaluationPlan | None, batch_index: int | None, op_id: s
 
 
 def _ensure_kleene_cost_supported(plan: EvaluationPlan) -> None:
-    # kleene singleton (MR_GROUP_DETECT) plans are costable (priced as a logical-size-n_K
-    # singleton in update_op_cost); unsupported kleene regimes are blocked at build time, not here.
     return None
 
 
@@ -169,8 +166,6 @@ def _sigma_at(components: Tuple[DependentSelectivity, ...], workload: Workload, 
             continue
         raise CostModelError(f"unknown DependentSelectivity subtype: {type(comp)!r}")
     return result
-
-
 
 
 def _view_source_map(source_blocks: Tuple[SourceBlock, ...]) -> dict[str, View]:
@@ -242,9 +237,10 @@ def _ordering_factor_from_block_contributions(block_contributions: list[tuple[fl
 
 def _effective_ordering_factor(op: UpdateOp, workload: Workload, batch_index: int,
                                source_sizes: Mapping[View, int]) -> float:
-    """estimate update ordering under a history-prefix / batch-suffix model. batch 1 reduces
-    to 1 / factorial(len(source_blocks)); later batches split non-last sources into history
-    and current-batch contributions, the last source staying batch-only."""
+    """Estimates the update ordering factor under a history-prefix / batch-suffix model. Batch 1 is
+        1 / factorial(len(source_blocks)); later batches split non-last sources into history
+        and current-batch contributions, the last source staying batch-only.
+    """
 
     return _ordering_factor_from_block_contributions(
         _update_block_contributions(op, workload, batch_index, source_sizes)
@@ -252,9 +248,7 @@ def _effective_ordering_factor(op: UpdateOp, workload: Workload, batch_index: in
 
 
 def _update_join_ops_form_tree(op: UpdateOp) -> bool:
-    """true iff ,,op.join_ops'' encode a bushy source tree rather than the canonical chain. a bushy
-    tree merges two sub-results, so some operand is a multi-source variable-set that is no source
-    block; the canonical chain joins single sources and never triggers the tree dispatch."""
+    """True iff `op.join_ops` encode a bushy source tree rather than the canonical chain."""
     source_views = {block.variables for block in op.source_blocks}
     for join_op in op.join_ops:
         if join_op.anchor_view not in source_views or join_op.new_view not in source_views:
@@ -265,10 +259,9 @@ def _update_join_ops_form_tree(op: UpdateOp) -> bool:
 def _tree_update_attributed_sigmas(
     op: UpdateOp, workload: Workload, batch_index: int
 ) -> dict[frozenset, tuple[int, float]]:
-    """map each cross-source dependent edge to the tree step where it spans the two operands,
-    carrying that edge's sigma (an edge counts iff its endpoints are in ,,op.target_view'' and in
-    different source blocks). the product of all attributed sigmas equals ,,sigma_cross'', so this
-    only chooses where each sigma lands, not the output cardinality."""
+    """Maps each cross-source dependent edge to the tree step where it spans the two operands,
+        carrying that edge's sigma. The product of all attributed sigmas equals `sigma_cross`.
+    """
     variable_to_source: dict[str, View] = {}
     for block in op.source_blocks:
         for variable in block.variables:
@@ -291,9 +284,10 @@ def _tree_update_attributed_sigmas(
 def _tree_update_per_step_sigma_and_residual(
     op: UpdateOp, workload: Workload, batch_index: int
 ) -> tuple[tuple[float, ...], float]:
-    """partition the bushy edge sigmas: edges co-occurring before the final step multiply
-    ,,per_step[step]'' (index 0 is the unused seed); edges at the final step go to the residual,
-    applied only to the final output, never to ,,intermediate_work''."""
+    """Partitions the bushy edge sigmas: edges co-occurring before the final step multiply
+        `per_step[step]` (index 0 is the unused seed); edges at the final step go to the residual,
+        applied only to the final output.
+    """
     final_step = len(op.join_ops)
     per_step = [1.0] * (final_step + 1)
     residual = 1.0
@@ -307,10 +301,11 @@ def _tree_update_per_step_sigma_and_residual(
 
 def _tree_update_intermediate_work(op: UpdateOp, workload: Workload, batch_index: int,
                                    source_sizes: Mapping[View, int]) -> int:
-    """tree-aware update intermediate work: walk ,,op.join_ops'' over a results map keyed by source
-    variable-set, summing each node's intermediate cardinality with the spanning band sigma. per step
-    uses the shared-key collapse divisor for shared-variable operands, else the interleave ordering
-    factor ,,s! w! / (s + w)!''. the final-step residual sigma lands only on the output, not here."""
+    """Tree-aware update intermediate work: walks `op.join_ops` over a results map keyed by source
+        variable-set, summing each node's intermediate cardinality with the spanning band sigma. Each step
+        uses the shared-key collapse divisor for shared-variable operands, else the interleave ordering
+        factor `s! w! / (s + w)!`. The final-step residual sigma applies only to the output.
+    """
     block_contributions = _update_block_contributions(op, workload, batch_index, source_sizes)
     block_total: dict[View, float] = {
         block.variables: total_size
@@ -376,11 +371,8 @@ def _batch_filtered_cache_size(source_size: int, workload: Workload, batch_index
     return float(source_size) * (workload.batch_sizes[batch_index - 1] / total_base)
 
 
-
-
 def update_op_cost(op: UpdateOp, workload: Workload, batch_index: int, state: StateLevelTape) -> OpCost:
     if op.update_mode == UpdateMode.MR_GROUP_DETECT:
-        # state.set is ABSOLUTE (not +=) because _analytic_singleton_size is already cumulative (n_at).
         if len(op.target_view) != 1:
             raise CostModelError(f"MR_GROUP_DETECT op must target a singleton view for {op.op_id}")
         variable = next(iter(op.target_view))
@@ -451,8 +443,6 @@ def update_op_cost(op: UpdateOp, workload: Workload, batch_index: int, state: St
         output_cardinality=output_size,
         intermediate_work=intermediate_work,
     )
-
-
 
 
 def _compose_nodes_ordering_factor(node_views: Tuple[View, ...], workload: Workload) -> float:
@@ -727,9 +717,10 @@ def _is_repeated_variable_equality_predicate(predicate: str) -> bool:
 
 def _composition_containment_side(plan: EvaluationPlan, workload: Workload, *, visited_views: Tuple[View, ...],
                                   current_vars: Collection[str], new_view: View, join_op) -> str | None:
-    """conservatively detect subset/superset consistency joins: two materialized view leaves where one
-    view is a strict subset of the other and the ON predicates are only repeated-variable equality
-    checks. an intermediate assembled from multiple leaves falls back to the default model."""
+    """Detects subset/superset consistency joins: two materialized view leaves where one
+        view is a strict subset of the other and the ON predicates are only repeated-variable equality
+        checks.
+    """
 
     current_view = frozenset(current_vars)
     if len(visited_views) != 1:
@@ -774,10 +765,7 @@ def _composition_containment_side(plan: EvaluationPlan, workload: Workload, *, v
 
 
 def _compose_join_ops_form_tree(plan: EvaluationPlan) -> bool:
-    """return true iff the composition's ,,join_ops'' encode a bushy tree rather than a chain. a bushy
-    tree joins two sub-results, so some operand is a merged variable-set that is no composition node;
-    the chain path joins one running intermediate against a single node per step. a chain-shaped tree
-    registers as a tree and is handled identically by the tree interpreter."""
+    """True iff the composition's `join_ops` encode a bushy tree rather than a chain."""
     node_views = {node.view for node in plan.composition.nodes}
     for join_op in plan.composition.join_ops:
         if join_op.anchor_view not in node_views or join_op.new_view not in node_views:
@@ -786,11 +774,10 @@ def _compose_join_ops_form_tree(plan: EvaluationPlan) -> bool:
 
 
 def _tree_edge_span_step(join_ops, left: str, right: str) -> int | None:
-    """the 1-based step whose join first brings ,,left'' and ,,right'' into one sub-result: the node
-    where the edge spans the two operands (one endpoint in ,,anchor_view'', the other in
-    ,,new_view''). cumulative variable presence is not enough: in a two-island tree a cross edge's
-    endpoints can both appear in the running set one step before the islands join. returns ,,None''
-    if the edge never spans (its endpoints are co-located in a single operand subtree)."""
+    """The 1-based step whose join first brings `left` and `right` into one sub-result: the node
+        where the edge spans the two operands (one endpoint in `anchor_view`, the other in
+        `new_view`). Returns `None` if the edge never spans.
+    """
     for step_index, join_op in enumerate(join_ops, start=1):
         anchor = join_op.anchor_view
         new = join_op.new_view
@@ -801,10 +788,9 @@ def _tree_edge_span_step(join_ops, left: str, right: str) -> int | None:
 
 def _tree_attributed_sigmas(plan: EvaluationPlan, workload: Workload,
                             batch_index: int) -> dict[frozenset, Tuple[int, float]]:
-    """map each non-internalized dependent edge to the tree step where it spans the two operands,
-    carrying that edge's sigma. mirrors ,,_compose_sigma_applied'''s edge selection exactly, so the
-    product of all attributed sigmas equals the order-invariant ,,_compose_sigma_applied'' and
-    ,,compose_cost'''s aggregate output is unchanged."""
+    """Maps each non-internalized dependent edge to the tree step where it spans the two operands,
+        carrying that edge's sigma. The product of all attributed sigmas equals `_compose_sigma_applied`.
+    """
     predicate_strings = _compose_predicate_strings(plan)
     join_ops = plan.composition.join_ops
 
@@ -830,10 +816,10 @@ def _tree_attributed_sigmas(plan: EvaluationPlan, workload: Workload,
 
 def _tree_per_step_sigma_and_residual(plan: EvaluationPlan, workload: Workload,
                                       batch_index: int) -> Tuple[Tuple[float, ...], float]:
-    """partition the bushy edge sigmas as the linear path does: edges co-occurring before the final
-    step multiply ,,per_step[step]'' (index 0 is the unused seed); edges at the final step go to the
-    residual, applied only to the final output. tree analog of ,,_compose_per_step_sigma'' plus
-    ,,_compose_sigma_residual'', so ,,math.prod(per_step) * residual == _compose_sigma_applied''."""
+    """Partitions the bushy edge sigmas: edges co-occurring before the final
+        step multiply `per_step[step]` (index 0 is the unused seed); edges at the final step go to the
+        residual, applied only to the final output. `math.prod(per_step) * residual == _compose_sigma_applied`.
+    """
     final_step = len(plan.composition.join_ops)
     per_step = [1.0] * (final_step + 1)
     residual = 1.0
@@ -846,9 +832,9 @@ def _tree_per_step_sigma_and_residual(plan: EvaluationPlan, workload: Workload,
 
 
 def _merged_view_alias(view: View, node_by_view: Mapping[View, object]) -> str:
-    """render a tree operand's display alias: a leaf's own compose alias, or the constituent leaf
-    aliases of a merged sub-result joined by ,,+'' (diagnostic only; downstream ranking reads the
-    numeric fields, not this string)."""
+    """The display alias of a tree operand: a leaf's own compose alias, or the constituent leaf
+        aliases of a merged sub-result joined by `+`.
+    """
     node = node_by_view.get(view)
     if node is not None:
         return node.alias
@@ -862,9 +848,9 @@ def _merged_view_alias(view: View, node_by_view: Mapping[View, object]) -> str:
 
 def _tree_predicates_by_step(plan: EvaluationPlan, workload: Workload,
                              batch_index: int) -> dict[int, list[dict[str, object]]]:
-    """group rendered dependent predicates by the bushy step where their edge spans the two
-    operands, matching ,,_tree_attributed_sigmas'''s attribution so ,,predicates_applied_here'' lines
-    up with each step's sigma."""
+    """Groups rendered dependent predicates by the bushy step where their edge spans the two
+        operands, matching `_tree_attributed_sigmas`.
+    """
     predicate_strings = _compose_predicate_strings(plan)
     join_ops = plan.composition.join_ops
 
@@ -888,10 +874,9 @@ def _tree_predicates_by_step(plan: EvaluationPlan, workload: Workload,
 
 def _compose_per_step_sigma_and_residual(plan: EvaluationPlan, workload: Workload,
                                          batch_index: int) -> Tuple[Tuple[float, ...], float]:
-    """dispatch the per-step sigma partition: the linear alias-availability walk for chain-shaped
-    ,,join_ops'', the variable-set co-occurrence walk for bushy ones. both branches partition the same
-    order-invariant ,,_compose_sigma_applied'', so ,,compose_cost'''s consistency assertion holds
-    either way."""
+    """Dispatches the per-step sigma partition: the linear alias-availability walk for chain-shaped
+        `join_ops`, the variable-set co-occurrence walk for bushy ones.
+    """
     if _compose_join_ops_form_tree(plan):
         return _tree_per_step_sigma_and_residual(plan, workload, batch_index)
     return (
@@ -903,11 +888,12 @@ def _compose_per_step_sigma_and_residual(plan: EvaluationPlan, workload: Workloa
 def _tree_compose_step_cardinalities(plan: EvaluationPlan, workload: Workload, batch_index: int,
                                      node_sizes: Mapping[View, int],
                                      per_step_sigma: Tuple[float, ...]) -> Tuple[_ComposeStepCardinality, ...]:
-    """tree-shaped analogue of ,,_compose_step_cardinalities'': walk the bushy ,,join_ops'' over a
-    results map keyed by variable-set, resolving each operand as a leaf node size or a prior
-    sub-result. per step the output is ,,left * right'' with the per-step edge sigma and either the
-    shared-key collapse divisor (shared variable) or the interleave ordering factor ,,s! w! / (s+w)!''.
-    the final-step residual sigma is applied only to ,,output_rows_after_residual''."""
+    """Tree-shaped analogue of `_compose_step_cardinalities`: walks the bushy `join_ops` over a
+        results map keyed by variable-set, resolving each operand as a leaf node size or a prior
+        sub-result. Each step's output is `left * right` with the per-step edge sigma and either the
+        shared-key collapse divisor (shared variable) or the interleave ordering factor `s! w! / (s+w)!`.
+        The final-step residual sigma applies only to `output_rows_after_residual`.
+    """
     join_ops = plan.composition.join_ops
     final_step = len(join_ops)
     _, residual_sigma = _tree_per_step_sigma_and_residual(plan, workload, batch_index)
@@ -1107,10 +1093,11 @@ def _compose_intermediate_work(plan: EvaluationPlan, workload: Workload, batch_i
 
 def compose_step_trace(plan: EvaluationPlan, workload: Workload, batch_index: int,
                        node_sizes: Mapping[View, int]) -> Tuple[dict[str, object], ...]:
-    """return diagnostic per-step cardinality estimates for composition, mirroring ,,compose_cost''
-    without changing any formula. ,,predicted_intermediate_work'' is the per-prefix contribution
-    summed by ,,_compose_intermediate_work''; ,,predicted_output_rows'' includes any final residual
-    sigma so the last trace row matches the aggregate compose output."""
+    """Returns diagnostic per-step cardinality estimates for composition.
+        `predicted_intermediate_work` is the per-prefix contribution
+        summed by `_compose_intermediate_work`; `predicted_output_rows` includes any final residual
+        sigma.
+    """
 
     if not plan.composition.join_ops:
         return ()
@@ -1157,9 +1144,6 @@ def compose_step_trace(plan: EvaluationPlan, workload: Workload, batch_index: in
         for detail in step_details:
             predicates.extend(str(predicate) for predicate in detail["predicates"])
 
-        # shared-key collapse divisor for this compose step: |shared key| for a shared-variable
-        # equi-join (which collapses the running intermediate), else 1.0. exposed for the ranking
-        # layer as an early-collapse-aware feature; diagnostic only, no cardinality change.
         step_current_vars: set[str] = set()
         for step_view in row.visited_views:
             step_current_vars |= set(step_view)
@@ -1205,7 +1189,6 @@ def compose_step_trace(plan: EvaluationPlan, workload: Workload, batch_index: in
         last["predicted_output_rows"] = float(aggregate_output)
         trace[-1] = last
 
-    # the summed per-prefix work must equal the quantity compose_cost uses.
     traced_work = _checked_floor(
         sum(float(row["predicted_intermediate_work"]) for row in trace),
         label="compose intermediate work",
@@ -1235,10 +1218,6 @@ def compose_cost(plan: EvaluationPlan, workload: Workload, batch_index: int,
         input_cardinality += node_size
         output_value *= float(node_size)
 
-    # compose is emitted as one multi-way CTAS over the composition nodes. we model the remaining
-    # global time-order freedom, then apply only the dependent-edge selectivities not already
-    # internalized in a node. repeated variables across nodes contribute equality predicates in SQL,
-    # so we divide by the corresponding singleton sizes to collapse those copies.
     ordering_factor = _compose_ordering_factor(plan, workload)
     per_step_sigma, sigma_residual = _compose_per_step_sigma_and_residual(plan, workload, batch_index)
     sigma_applied = _compose_sigma_applied(plan, workload, batch_index)
@@ -1292,8 +1271,9 @@ def postfilter_cost(candidate_size: int, anchor_size: int, op_id: str = "post_fi
 
 def batch_cost(plan: EvaluationPlan, workload: Workload, batch_index: int, state: StateLevelTape,
                run_query: bool = True) -> BatchCostBreakdown:
-    """cost one 1-based batch. updates always run; composition and post-filtering run only when
-    ,,run_query'' is true, letting callers model batches without a query."""
+    """Cost of one 1-based batch. Updates always run; composition and post-filtering run only when
+        `run_query` is true.
+    """
 
     _ensure_kleene_cost_supported(plan)
 
@@ -1348,8 +1328,9 @@ def batch_cost(plan: EvaluationPlan, workload: Workload, batch_index: int, state
 
 
 def plan_cost(plan: EvaluationPlan, workload: Workload, query_batches: Collection[int] | None = None) -> int:
-    """return total cost across 1-based batches. ,,query_batches=None'' queries every batch; an empty
-    collection models update-only maintenance."""
+    """Total cost across 1-based batches. `query_batches=None` queries every batch; an empty
+        collection models update-only maintenance.
+    """
 
     _ensure_kleene_cost_supported(plan)
 

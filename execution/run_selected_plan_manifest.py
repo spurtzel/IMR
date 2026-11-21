@@ -265,7 +265,6 @@ def descriptor_to_command(
     metadata = getattr(descriptor, "metadata", None)
     explicit_cover = metadata.get("explicit_cover") if isinstance(metadata, dict) else None
     if explicit_cover:
-        # a clique_grow/edge_cover pick: emit-sql rebuilds this cover directly (--strategies is N1)
         cmd.extend(["--explicit-cover", ",".join(explicit_cover)])
     if args.dump_qep:
         cmd.append("--dump-qep")
@@ -388,7 +387,6 @@ def _configure_sizing(args: argparse.Namespace) -> None:
             raise ValueError(f"--batch-sizes sums to {sum(sizes)} but --total-events is {args.total_events}")
         if args.batches is not None and len(sizes) != args.batches:
             raise ValueError(f"--batch-sizes has {len(sizes)} entries but --batches is {args.batches}")
-        # the executed schedule is the list; these scalars are kept coherent for bookkeeping
         args.batch_sizes_list = sizes
         args.initial_history = sizes[0]
         args.updates = len(sizes) - 1

@@ -1,6 +1,5 @@
 {
-  "name": "q4_cycle_rare_spatial",
-  "suite_metadata": {"pattern_length": 4, "shape": "cycle", "independent_selectivity_class": "rare", "dependent_predicate_strength": "canonical"},
+  "name": "q4_chain_rare_spatial",
   "variables": [
     {"name": "A", "output_prefix": "a", "independent_predicate_id": "A_type"},
     {"name": "B", "output_prefix": "b", "independent_predicate_id": "B_type"},
@@ -17,8 +16,7 @@
   "dependent_predicates": [
     {"predicate_id": "A_B_spatial", "kind": "dependent", "variables": ["A", "B"], "sql_template": "B.lon BETWEEN A.lon - 0.05 AND A.lon + 0.05 AND B.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02", "referenced_columns": ["lon", "lat"], "selectivity_key": "A|B"},
     {"predicate_id": "B_C_spatial", "kind": "dependent", "variables": ["B", "C"], "sql_template": "C.lon BETWEEN B.lon - 0.05 AND B.lon + 0.05 AND C.lat BETWEEN B.lat - 0.02 AND B.lat + 0.02", "referenced_columns": ["lon", "lat"], "selectivity_key": "B|C"},
-    {"predicate_id": "C_D_spatial", "kind": "dependent", "variables": ["C", "D"], "sql_template": "D.lon BETWEEN C.lon - 0.05 AND C.lon + 0.05 AND D.lat BETWEEN C.lat - 0.02 AND C.lat + 0.02", "referenced_columns": ["lon", "lat"], "selectivity_key": "C|D"},
-    {"predicate_id": "A_D_spatial", "kind": "dependent", "variables": ["A", "D"], "sql_template": "D.lon BETWEEN A.lon - 0.05 AND A.lon + 0.05 AND D.lat BETWEEN A.lat - 0.02 AND A.lat + 0.02", "referenced_columns": ["lon", "lat"], "selectivity_key": "A|D"}
+    {"predicate_id": "C_D_spatial", "kind": "dependent", "variables": ["C", "D"], "sql_template": "D.lon BETWEEN C.lon - 0.05 AND C.lon + 0.05 AND D.lat BETWEEN C.lat - 0.02 AND C.lat + 0.02", "referenced_columns": ["lon", "lat"], "selectivity_key": "C|D"}
   ],
   "measures": [
     {"expression": "A.id", "alias": "a_id", "sql_type": "BIGINT"}, {"expression": "A.time", "alias": "a_time", "sql_type": "TIMESTAMP(6)"},

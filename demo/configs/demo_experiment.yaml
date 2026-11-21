@@ -1,5 +1,4 @@
-# Demo experiment: small end-to-end pipeline cell (<= 5k rows) with the per-batch
-# native-MATCH_RECOGNIZE full-tuple correctness capture ON.
+# Demo experiment: small end-to-end pipeline cell (<= 5k rows) with per-batch correctness capture.
 query:
   pattern_length: 3
   topology: chain
@@ -16,7 +15,7 @@ data:
     MOTOR VEHICLE THEFT: 0.15
 
 execution:
-  selectivity_mode: b_unified   # the deployable estimator, measured on the loaded table
+  selectivity_mode: b_unified
   join_order: bushy
 
 output:

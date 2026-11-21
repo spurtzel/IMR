@@ -1,8 +1,6 @@
 """Derive verification predicates/edges from a benchmark query-spec JSON.
 
-The regexes mirror execution/compute_selectivities.py, kept self-contained so the
-generator package does not import benchmark modules. Unsupported shapes raise.
-"""
+The regexes mirror execution/compute_selectivities.py. Unsupported shapes raise."""
 
 from __future__ import annotations
 
@@ -22,29 +20,22 @@ from workload.data.datagen.verification import (
 
 _FLOAT = r"[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?"
 
-# Predicate-shape matchers: reconstruct a datagen edge from a dependent condition's SQL text.
-# ,,var.col = 'value''': a categorical type equality.
 _TYPE_EQ_RE = re.compile(r"(?is)^\s*(?P<var>\w+)\s*\.\s*(?P<col>\w+)\s*=\s*'(?P<value>[^']*)'\s*$")
-# ,,var.col OP <number>'': an independent numeric threshold.
 _THRESHOLD_RE = re.compile(rf"(?is)^\s*(?P<var>\w+)\s*\.\s*(?P<col>\w+)\s*(?P<op><=|>=|<|>)\s*(?P<lit>{_FLOAT})\s*$")
-# ,,subj.col BETWEEN anchor.col - d AND anchor.col + d'': a symmetric spatial band of half-width d.
 _SPATIAL_BETWEEN_RE = re.compile(
     rf"(?is)(?P<subject>\w+)\s*\.\s*(?P<subject_col>\w+)\s+BETWEEN\s+"
     rf"(?P<anchor>\w+)\s*\.\s*(?P<anchor_col>\w+)\s*-\s*(?P<delta>{_FLOAT})\s+AND\s+"
     rf"(?P=anchor)\s*\.\s*(?P=anchor_col)\s*\+\s*(?P<delta2>{_FLOAT})"
 )
-# ,,subj.ts BETWEEN anchor.ts AND anchor.ts + INTERVAL 'v' unit'': a forward temporal window.
 _TEMPORAL_BETWEEN_RE = re.compile(
     r"(?is)^\s*(?P<subject>\w+)\s*\.\s*(?P<col>time|ts)\s+BETWEEN\s+"
     r"(?P<anchor>\w+)\s*\.\s*(?P=col)\s+AND\s+"
     r"(?P=anchor)\s*\.\s*(?P=col)\s*\+\s*INTERVAL\s*'(?P<value>[^']+)'\s*(?P<unit>\w+)\s*$"
 )
-# ,,abs(date_diff('millisecond', anchor.ts, subj.ts)) <= millis'': a symmetric temporal window.
 _ABS_DATE_DIFF_RE = re.compile(
     r"(?is)^\s*abs\s*\(\s*date_diff\s*\(\s*'millisecond'\s*,\s*"
     r"(?P<anchor>\w+)\s*\.\s*(?P<col>time|ts)\s*,\s*(?P<subject>\w+)\s*\.\s*(?P=col)\s*\)\s*\)\s*<=\s*(?P<millis>\d+)\s*$"
 )
-# ,,subj.id BETWEEN anchor.id AND anchor.id + width'': a forward id-offset band.
 _ID_BETWEEN_RE = re.compile(
     r"(?is)^\s*(?P<subject>\w+)\s*\.\s*id\s+BETWEEN\s+(?P<anchor>\w+)\s*\.\s*id\s+AND\s+"
     r"(?P=anchor)\s*\.\s*id\s*\+\s*(?P<width>\d+)\s*$"
@@ -59,8 +50,6 @@ _INTERVAL_MICROS = {
     "HOURS": 3_600_000_000,
 }
 
-# abs(date_diff('millisecond', a, b)) <= m with truncation toward zero admits
-# any |delta| < (m+1) ms, i.e. up to m*1000 + 999 whole microseconds.
 _TRUNC_SLACK_MICROS = 999
 
 

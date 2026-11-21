@@ -1,1 +1,1 @@
-"""Workload generators: data/ = datagen, query/ = campaign_spec_gen."""
+"""Workload generators: data/ = datagen, query/ = spec_gen."""

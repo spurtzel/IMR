@@ -7,14 +7,13 @@
   memory    the chain at k = 3 .. 6 under four materialization strategies: all singletons, clique-grow's pick, one view
             over the full pattern, all pattern prefixes. Recorded per strategy: the persistent state (the Iceberg data
             files of its views at the end of the run) and the peak transient query memory (the largest peak memory
-            Trino reports for one of its statements). Native MATCH_RECOGNIZE is not run: it keeps no state, and on
-            Trino it does not finish at table sizes at which the strategies differ.
+            Trino reports for one of its statements).
             paper: N = 400,000, sigma = 0.002, type rate 0.02
 
-Tables: the generator's (eight event types, 1,000 events per second, seed 42). The queries have no time window, so
-native MR is the statement as written. Single-threaded, join reordering off, no warm-up of the approaches, ingestion untimed.
+Tables: the generator's (eight event types, 1,000 events per second, seed 42). The queries have no time window.
+Single-threaded, join reordering off, ingestion untimed.
 
-Gates: topology: mr == eimer on full tuples where native MR finishes. memory: every strategy that finishes returns the
+Checks: topology: mr == eimer on full tuples where native MR finishes. memory: every strategy that finishes returns the
 tuples of the all-singleton strategy.
 
 Options (environment):
@@ -37,8 +36,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import trino_lib as tl  # noqa: E402  (wires the repository onto sys.path)
-import common  # noqa: E402  (demo/common.py)
+import trino_lib as tl  # noqa: E402
+import common  # noqa: E402
 from workload.data.datagen import generate_events  # noqa: E402
 from eimer.models import make_view  # noqa: E402
 from eimer.selection.plan_selection_clique_grow import select_clique_grow_plan  # noqa: E402
@@ -88,7 +87,7 @@ def strategy_total_s() -> float:
 
 
 def with_driver(toks: list, vs: list) -> list:
-    """the views to execute: the cover plus the last variable's own view if no view holds it (the query is driven by it)."""
+    """the views to execute."""
     return list(toks) + ([vs[-1]] if not any(vs[-1] in make_view(t.split("_")) for t in toks) else [])
 
 
@@ -114,7 +113,6 @@ def setup(c: dict, client):
     return spec, dep, vs, qb, table, wl, pick, selection
 
 
-# ---------------------------------------------------------------- part "topology"
 def run_topology(c: dict, client) -> dict:
     n, B, T = c["n"], c["batches"], wall_s()
     spec, dep, vs, qb, table, wl, pick, selection = setup(c, client)
@@ -134,7 +132,6 @@ def run_topology(c: dict, client) -> dict:
                 gates=dict(results_identical=(g["identical"] if g else None), n_compared=(1 if g else 0), gate=g))
 
 
-# ---------------------------------------------------------------- part "memory"
 def strategy_views(name: str, vs: list, pick: list) -> list:
     """the views a strategy maintains, as view names in pattern order."""
     if name == "singletons":

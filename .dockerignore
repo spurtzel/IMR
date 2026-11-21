@@ -1,7 +1,6 @@
 __pycache__
 **/__pycache__
 *.pyc
-.pytest_cache
 .git
 out
 docker/out

@@ -2,22 +2,17 @@
 """Transpiled baseline SQL for a windowed chain spec.
 
 The baseline is the SQL that the MATCH_RECOGNIZE-to-SQL transpiler of Lambrecht et al. ("Democratize MATCH_RECOGNIZE!",
-PVLDB 18(12), 2025) generates for the query. It was obtained through the Compiler-Explorer API of the authors' public
-demo (https://db.cs.uni-tuebingen.de/matchrecognize) and is shipped under queries/<spec>.duckdb.sql: the exact code the
-experiments of the paper executed. The reproduction therefore needs no network access. The files next to it document
-the input: <spec>.mr.sql is the query EIMER runs, <spec>.transpiler_input.sql the text sent to the transpiler.
+PVLDB 18(12), 2025) generates for the query, obtained through the Compiler-Explorer API of the authors' public demo
+(https://db.cs.uni-tuebingen.de/matchrecognize). It is shipped under queries/<spec>.duckdb.sql and needs no network
+access. <spec>.mr.sql is the query EIMER runs, <spec>.transpiler_input.sql the text sent to the transpiler.
 
-The transpiler's parser rejects BETWEEN with arithmetic bounds and INTERVAL literals, and it lower-cases string
-literals; its generated code aborts once any partial path exceeds 64 rows. The text sent to it is therefore a
-semantics-preserving respelling of the spec's MATCH_RECOGNIZE:
-  * ,,X.c BETWEEN Y.c - w AND Y.c + w''  ->  ,,X.c >= Y.c - w AND X.c <= Y.c + w''
-  * ,,Z AS TRUE''  ->  ,,Z AS date_diff('millisecond', A.ts, Z.ts) <= W''  (the gap bounded by the
-    pattern's window: every gap row precedes the windowed last variable, so the match set is identical;
-    it stops the transpiler's path enumeration at the window instead of the end of the table)
+The text sent to the transpiler is a semantics-preserving respelling of the spec's MATCH_RECOGNIZE:
+  * `X.c BETWEEN Y.c - w AND Y.c + w`  ->  `X.c >= Y.c - w AND X.c <= Y.c + w`
+  * `Z AS TRUE`  ->  `Z AS date_diff('millisecond', A.ts, Z.ts) <= W`  (the gap bounded by the pattern's window)
   * after transpiling, the lower-cased literals are restored to the spec's spelling.
-The input reads the relation ,,events_window'' (duckdb_exec.baseline_streaming re-points it per batch).
+The input reads the relation `events_window` (duckdb_exec.baseline_streaming re-points it per batch).
 
-A spec without a shipped file is fetched from the demo only if EIMER_REPRO_FETCH_TRANSPILER=1 is set.
+A spec without a shipped file is fetched from the demo if EIMER_REPRO_FETCH_TRANSPILER=1 is set.
 """
 from __future__ import annotations
 
@@ -41,8 +36,7 @@ def respell_for_transpiler(mr_sql: str, first_var: str, w_ms: int) -> str:
 
 
 def restore_literal_case(transpiled: str, original: str) -> str:
-    """the transpiler lower-cases string literals; map each lower-cased literal back to the
-    original spelling (unique by construction: T0, T1, ...)."""
+    """map each lower-cased string literal of the transpiler output back to the original spelling (T0, T1, ...)."""
     lits = set(re.findall(r"'([^']*)'", original))
     lower = {}
     for lit in lits:
@@ -56,7 +50,7 @@ def transpile_text(src: str) -> str:
                        "options": {"userArguments": "", "compilerOptions": {"executorRequest": False},
                                    "filters": {"binary": False, "execute": False, "labels": False, "directives": False,
                                                "commentOnly": False, "trim": False, "intel": False, "demangle": False},
-                                   "tools": [], "libraries": []}, "allowStoreCodeDebug": True}).encode()
+                                   "tools": [], "libraries": []}, "allowStoreCodeDebug": False}).encode()
     req = urllib.request.Request(API, data=body, headers={"Content-Type": "application/json", "Accept": "application/json"})
     d = json.loads(urllib.request.urlopen(req, timeout=180).read())
     out = "\n".join(x.get("text", "") for x in d.get("asm", []))
@@ -66,7 +60,7 @@ def transpile_text(src: str) -> str:
 
 
 def transpiled_sql_for(spec, first_var: str, w_ms: int) -> tuple[str, Path]:
-    """(sql, path): the shipped file of the spec; fetched from the demo only on request (see the module docstring)."""
+    """(sql, path) of the spec's transpiled baseline."""
     from eimer.query.query_spec import query_spec_to_match_recognize_sql
     qdir = HERE / "queries"; qdir.mkdir(exist_ok=True)
     out = qdir / f"{spec.name}.duckdb.sql"
@@ -85,7 +79,7 @@ def transpiled_sql_for(spec, first_var: str, w_ms: int) -> tuple[str, Path]:
 
 
 def bounded_gap_in_input(spec_name: str) -> bool | None:
-    """does the shipped transpiler input state the window on the gap variable (the bounded form)? None = no input file."""
+    """whether the transpiler input states the window on the gap variable."""
     p = HERE / "queries" / f"{spec_name}.transpiler_input.sql"
     if not p.exists():
         return None

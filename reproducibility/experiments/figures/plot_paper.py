@@ -2,8 +2,8 @@
 """The DuckDB and Esper figures of the paper: runtime lines and peak-memory bars per approach over the table size N and
 the pattern length k, from the records of the DuckDB and the Esper experiment (../duckdb, ../esper).
 
-The record directories and the figure variant are set through environment variables; the two commands that produce
-the paper's figures are in reproducibility/docker/in_container/render_figures.sh. Writes
+The record directories and the figure variant are set through environment variables; the commands that produce the
+paper's figures are in reproducibility/docker/in_container/render_figures.sh. Writes
 <PLOT_OUT_DIR>/duckdb_esper_paper*.{png,pdf}.
 """
 from __future__ import annotations
@@ -43,9 +43,9 @@ def _cells(exp: str):
 
 
 DUCK = _cells("duckdb")
-os.environ["ESPER_CENTER"] = "fig8"
+os.environ["ESPER_CENTER"] = "n_panel"
 ESP = _cells("esper")
-ESP_CENTER, ESP_AXES = ESP.active_center("fig8s005" if "s005" in os.environ.get("ESPER_RESULTS", "") else "fig8")
+ESP_CENTER, ESP_AXES = ESP.active_center("n_panel")
 
 DUCKDB_RESULTS = EXP / "duckdb" / os.environ.get("DUCKDB_RESULTS", "results")
 ESPER_RESULTS = EXP / "esper" / os.environ.get("ESPER_RESULTS", "results")
@@ -57,7 +57,7 @@ MEM = os.environ.get("MEM", "1") == "1"
 FIGS = Path(os.environ["PLOT_OUT_DIR"]) if os.environ.get("PLOT_OUT_DIR") else HERE / "figs"
 ESPER_GROUPED_LEGEND = os.environ.get("ESPER_GROUPED_LEGEND", "0") == "1"
 PANELS = [a for a in os.environ.get("PANELS", "").split(",") if a]
-NAME = "duckdb_esper_paper" + ("_bounded" if ESPER_BOUNDED else "") + ("_unb" if ESPER_UNBOUNDED else "") + ("_n200" if os.environ.get("ESPER_N_AXIS") == "N200" else "") + ("_n1000" if os.environ.get("DUCKDB_N_AXIS") == "N1000" else "") + ("_bars3" if os.environ.get("BAR_ARMS") else "") + ("_strategies" if ESPER_STRATEGIES else "") + ("_mem" if MEM else "") + ("_k005" if ESPER_K_FROM else "") + ("_s005" if ESPER_RESULTS.name.endswith("s005") else "") + ("_mb" if os.environ.get("STATE_UNIT") == "mb" else "")
+NAME = "duckdb_esper_paper" + ("_bounded" if ESPER_BOUNDED else "") + ("_unb" if ESPER_UNBOUNDED else "") + ("_n200" if os.environ.get("ESPER_N_AXIS") == "N200" else "") + ("_n1000" if os.environ.get("DUCKDB_N_AXIS") == "N1000" else "") + ("_bars3" if os.environ.get("BAR_ARMS") else "") + ("_strategies" if ESPER_STRATEGIES else "") + ("_mem" if MEM else "") + ("_k005" if ESPER_K_FROM else "") + ("_mb" if os.environ.get("STATE_UNIT") == "mb" else "")
 NAME += ("_ytight" if os.environ.get("Y_TIGHT") == "1" else "") + ("_unsharey" if os.environ.get("UNSHARE_Y") == "1" else "") + os.environ.get("NAME_SUFFIX", "") + ("_grouped" if ESPER_GROUPED_LEGEND else "")
 
 XLABEL = {"N": r"Table Size $N$", "W": r"Window $W$ [ms]", "B": r"Batches $B$", "k": r"Pattern Length $k$"}

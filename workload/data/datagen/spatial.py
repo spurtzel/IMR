@@ -13,12 +13,10 @@ For the band |dlon| <= wx AND |dlat| <= wy between two i.i.d. draws:
     B = (2wx/(sDx)) * (2wy/(sDy))
     C = (1/K) * U(wx; dx) * U(wy; dy)
 
-with the CAPPED axis-overlap probability U(w; L) = 1 - max(0, 1 - w/L)^2
-(saturates at 1 for w >= L; the uncapped parabola is wrong for tight clusters).
+with the capped axis-overlap probability U(w; L) = 1 - max(0, 1 - w/L)^2.
 The cross-cluster term is zero by the grid layout's per-axis edge-gap
-separation. sigma(c) is a quadratic and NOT monotone in general; calibration
-solves it analytically and takes the smallest root in [0, 1].
-"""
+separation. Calibration solves sigma(c) analytically and takes the smallest
+root in [0, 1]."""
 
 from __future__ import annotations
 
@@ -28,10 +26,7 @@ from dataclasses import dataclass
 
 from workload.data.datagen.config import BandTarget, SpatialConfig
 
-# Multiplicative slack applied to the minimal grid pitch / feasibility scale so
-# that separation and interiority hold strictly, not at a measure-zero boundary.
 _GEOMETRY_SLACK = 1.0 + 1e-9
-# Absolute tolerance on sigma targets: |sigma(c) - sigma*| below this counts as hit.
 _SIGMA_TOLERANCE = 1e-12
 
 
@@ -47,16 +42,15 @@ def axis_overlap_probability(w: float, length: float) -> float:
 
 @dataclass(frozen=True)
 class SpatialLayout:
-    """A realized spatial mixture: everything the generator needs to draw
-    coordinates and the manifest needs to record."""
+    """A realized spatial mixture: the parameters for drawing coordinates and for the manifest."""
 
     lon_origin: float
     lat_origin: float
-    lon_extent: float  # scaled extent s * Dx
+    lon_extent: float
     lat_extent: float
     domain_scale: float
-    cluster_fraction: float  # c
-    cluster_count: int  # K actually used; 0 when cluster_fraction == 0
+    cluster_fraction: float
+    cluster_count: int
     cluster_extent_lon: float
     cluster_extent_lat: float
     cluster_lon_origins: tuple[float, ...]
@@ -137,10 +131,8 @@ def _solve_cluster_fraction(a: float, b: float, c_term: float, sigma_target: flo
     """Smallest c in [0, 1] with sigma(c) = sigma_target, or None.
 
     sigma(c) - sigma* = (A - 2B + C) c^2 + 2(B - A) c + (A - sigma*).
-    Uses the citardauq pairing (q = -(lin + sign(lin)*sqrt(disc))/2; roots q/quad
-    and const/q): lin = 2(B-A) > 0 always, so the naive (-lin + sqrt)/2quad form
-    cancels catastrophically when |quad| is small.
-    """
+    Roots via the citardauq pairing (q = -(lin + sign(lin)*sqrt(disc))/2; roots q/quad
+    and const/q)."""
     quad = a - 2.0 * b + c_term
     lin = 2.0 * (b - a)
     const = a - sigma_target
@@ -152,8 +144,6 @@ def _solve_cluster_fraction(a: float, b: float, c_term: float, sigma_target: flo
     else:
         disc = lin * lin - 4.0 * quad * const
         if disc < 0.0:
-            # Targets at the admitted ceiling can round disc tiny-negative;
-            # the caller has already checked sigma_target <= sigma_max.
             if disc < -1e-9 * lin * lin:
                 return None
             disc = 0.0
@@ -176,20 +166,16 @@ def _grid_layout(
 ) -> tuple[float, list[float], list[float]]:
     """Minimal feasible domain scale and cluster box origins for a grid of
     cluster_count boxes, with per-axis pitch > (w + d) and boxes interior to
-    [w, sD - w - d] per axis.
+    [w, sD - w - d] per axis. Any two distinct grid cells are edge-gap
+    separated by > w in at least one axis.
 
-    Any two distinct grid cells differ in at least one grid coordinate, so they
-    are edge-gap separated by > w in that axis: the per-pair OR-over-axes
-    separation the zero cross-cluster term requires.
-
-    Returns (scale, lon_origins, lat_origins).
-    """
+    Returns (scale, lon_origins, lat_origins)."""
     wx, wy = band.half_width_lon, band.half_width_lat
     dx, dy = config.cluster_extent_lon, config.cluster_extent_lat
 
     best: tuple[float, int, int] | None = None
     for gx in range(1, cluster_count + 1):
-        gy = -(-cluster_count // gx)  # ceil
+        gy = -(-cluster_count // gx)
         pitch_x = (wx + dx) * _GEOMETRY_SLACK
         pitch_y = (wy + dy) * _GEOMETRY_SLACK
         span_x = (gx - 1) * pitch_x + dx
@@ -204,8 +190,6 @@ def _grid_layout(
 
     sdx = config.lon_extent * scale
     sdy = config.lat_extent * scale
-    # Spread the grid evenly over the interior [w, sD - w - d]; the resulting
-    # pitch is >= the minimal one by construction of ,,scale''.
     lon_starts = _spread(config.lon_origin + wx, config.lon_origin + sdx - wx - dx, gx)
     lat_starts = _spread(config.lat_origin + wy, config.lat_origin + sdy - wy - dy, gy)
 
@@ -230,8 +214,7 @@ def _validate_separation(
     lon_origins: list[float],
     lat_origins: list[float],
 ) -> None:
-    """Defense-in-depth: every box pair must have an edge-to-edge gap > w in at
-    least one axis (otherwise the cross-cluster term is not zero)."""
+    """Checks that every box pair has an edge-to-edge gap > w in at least one axis."""
     wx, wy = band.half_width_lon, band.half_width_lat
     dx, dy = config.cluster_extent_lon, config.cluster_extent_lat
     n = len(lon_origins)
@@ -275,11 +258,9 @@ def calibrate(config: SpatialConfig, band: BandTarget) -> SpatialLayout:
     1. sigma* == A(1): pure uniform.
     2. sigma* <  A(1): uniform with the domain scaled up (origin-anchored).
     3. sigma* >  A(1): clusters, for K from the configured count down to 1,
-       find the minimal feasible scale and solve the quadratic for c; smaller K
-       reaches higher sigma (K=1 with d <= w approaches 1).
+       find the minimal feasible scale and solve the quadratic for c.
 
-    Raises ValueError with the achievable ranges if no K works.
-    """
+    Raises ValueError with the achievable ranges if no K works."""
     sigma_uniform = axis_overlap_probability(band.half_width_lon, config.lon_extent) * axis_overlap_probability(
         band.half_width_lat, config.lat_extent
     )

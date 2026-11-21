@@ -8,8 +8,8 @@
 #   experiments : python:3.10-slim + a Java 21 runtime + the pinned wheels + LaTeX for the figures + this repository
 #
 # Build arguments:
-#   WITH_TEX=1   install LaTeX, so the figures are typeset exactly as in the paper (Latin Modern, bold);
-#                WITH_TEX=0 gives a much smaller image and figures in matplotlib's own fonts
+#   WITH_TEX=1   install LaTeX; the figures are typeset as in the paper (Latin Modern, bold)
+#   WITH_TEX=0   omit LaTeX; the figures use matplotlib's own fonts
 ARG PYTHON_IMAGE=docker.io/library/python:3.10-slim
 ARG MAVEN_IMAGE=docker.io/library/maven:3.9-eclipse-temurin-21
 ARG JRE_IMAGE=docker.io/library/eclipse-temurin:21-jre
@@ -17,7 +17,6 @@ ARG JRE_IMAGE=docker.io/library/eclipse-temurin:21-jre
 FROM ${MAVEN_IMAGE} AS esper-build
 WORKDIR /build
 COPY backends/esper/java/pom.xml ./
-# dependencies first (build-cache friendly)
 RUN mvn -q -B -DskipTests dependency:go-offline || true
 COPY backends/esper/java/src ./src
 RUN mvn -q -B package
@@ -26,7 +25,7 @@ FROM ${JRE_IMAGE} AS jre
 
 FROM ${PYTHON_IMAGE} AS experiments
 ARG WITH_TEX=1
-# GNU time (/usr/bin/time) is used by the memory stages (taskset, for the optional core pinning, is part of the base image)
+# GNU time (/usr/bin/time) for the memory stages
 RUN apt-get update \
  && apt-get install -y --no-install-recommends time \
  && if [ "$WITH_TEX" = "1" ]; then \
@@ -38,7 +37,6 @@ COPY --from=jre /opt/java/openjdk /opt/java/openjdk
 ENV JAVA_HOME=/opt/java/openjdk
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 WORKDIR /eimer
-# pinned wheels first (build-cache friendly); the data generator is bit-reproducible only under these versions
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . /eimer
